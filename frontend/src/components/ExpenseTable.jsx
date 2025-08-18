@@ -3,7 +3,7 @@ import { Paper, Typography, Table, TableBody, TableCell, TableContainer, TableHe
 import EditIcon from '@mui/icons-material/Edit';
 import { formatCurrency } from '../utils/formatters';
 
-export default function ExpenseTable({ gastos, onEditGasto }) { // Adicionada a prop onEditGasto
+export default function ExpenseTable({ gastos, onEditGasto }) {
   return (
     <Paper sx={{ p: 2, boxShadow: 'none' }}>
       <Typography variant="h6" color="primary" gutterBottom>
@@ -15,11 +15,12 @@ export default function ExpenseTable({ gastos, onEditGasto }) { // Adicionada a 
             <TableRow>
               <TableCell>Descrição</TableCell>
               <TableCell>Categoria</TableCell>
+              <TableCell>Tipo de Pagamento</TableCell>
               <TableCell align="center">Parcela</TableCell>
               <TableCell align="right">Valor</TableCell>
               <TableCell>Responsável</TableCell>
               <TableCell>Data</TableCell>
-              <TableCell align="center">Ações</TableCell> {/* <-- Nova Coluna */}
+              <TableCell align="center">Ações</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -27,6 +28,10 @@ export default function ExpenseTable({ gastos, onEditGasto }) { // Adicionada a 
               <TableRow hover key={`${gasto.id}-${gasto.parcela_atual || 1}`}>
                 <TableCell>{gasto.descricao}</TableCell>
                 <TableCell>{gasto.categoria?.nome || 'Sem Categoria'}</TableCell>
+                {/* LÓGICA PARA EXIBIR O PAGAMENTO */}
+                <TableCell>
+                  {gasto.cartao ? gasto.cartao.nome : 'Débito'}
+                </TableCell>
                 <TableCell align="center">
                   {gasto.is_parcelado ? (
                     <Chip label={`${gasto.parcela_atual}/${gasto.numero_parcelas}`} size="small" />
@@ -35,7 +40,6 @@ export default function ExpenseTable({ gastos, onEditGasto }) { // Adicionada a 
                 <TableCell align="right">{formatCurrency(gasto.valor)}</TableCell>
                 <TableCell>{gasto.responsavel}</TableCell>
                 <TableCell>{new Date(gasto.data).toLocaleDateString()}</TableCell>
-                {/* NOVO BOTÃO DE EDITAR */}
                 <TableCell align="center">
                   <IconButton size="small" onClick={() => onEditGasto(gasto)}>
                     <EditIcon fontSize="small" />

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { Box, CssBaseline, Toolbar } from '@mui/material';
+import { useSnackbar } from 'notistack';
 
 import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
@@ -8,21 +9,25 @@ import Metas from './pages/Metas';
 import Faturas from './pages/Faturas';
 import EditExpenseModal from './components/EditExpenseModal';
 import { 
-  getCategorias, getCartoes, updateGasto, getGastos, getGastosParcelados, 
-  getFatura, getMetas, createMeta, addContribuicaoToMeta, deleteMeta, deleteContribuicao 
+  getCategorias, getCartoes, updateGasto, deleteGasto, getGastos, getGastosParcelados, 
+  getFatura, getMetas 
 } from './services/api';
 
 export default function App() {
+  const { enqueueSnackbar } = useSnackbar();
+
   // --- ESTADO CENTRALIZADO ---
   const [gastosDoMes, setGastosDoMes] = useState([]);
   const [comprasParceladas, setComprasParceladas] = useState([]);
   const [gastosFatura, setGastosFatura] = useState([]);
   const [categorias, setCategorias] = useState([]);
-  const [cartoes, setCartoes] = useState([]);
-  const [metas, setMetas] = useState([]); // <-- NOVO ESTADO PARA METAS
+  const [allCards, setAllCards] = useState([]); // <-- TODOS os cartões (ativos e inativos)
+  const [activeCards, setActiveCards] = useState([]); // <-- Apenas os ativos
+  const [metas, setMetas] = useState([]);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [cartaoSelecionadoId, setCartaoSelecionadoId] = useState('');
   
+  // --- LÓGICA DO MODAL DE EDIÇÃO ---
   const [gastoParaEditar, setGastoParaEditar] = useState(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
@@ -32,28 +37,36 @@ export default function App() {
       const mes = currentDate.getMonth() + 1;
       
       const [catRes, carRes, gasRes, parRes, metRes] = await Promise.all([
-        getCategorias(), getCartoes(), getGastos({ ano, mes }),
-        getGastosParcelados({ ano, mes }), getMetas()
+        getCategorias(), 
+        getCartoes({ include_inactive: true }), // <-- Pede para a API incluir os inativos
+        getGastos({ ano, mes }),
+        getGastosParcelados({ ano, mes }), 
+        getMetas()
       ]);
 
       setCategorias(catRes.data);
-      setCartoes(carRes.data);
+      setAllCards(carRes.data); // Armazena todos
+      setActiveCards(carRes.data.filter(c => c.is_active)); // Deriva e armazena os ativos
       setGastosDoMes(gasRes.data);
       setComprasParceladas(parRes.data);
-      setMetas(metRes.data); // <-- ATUALIZA O ESTADO DE METAS
+      setMetas(metRes.data);
 
-      const firstCardId = carRes.data.length > 0 ? carRes.data[0].id : '';
+      const firstActiveCard = carRes.data.find(c => c.is_active);
+      const firstCardId = firstActiveCard ? firstActiveCard.id : '';
+
       if (firstCardId && !cartaoSelecionadoId) {
         setCartaoSelecionadoId(firstCardId);
       }
       
-      if (cartaoSelecionadoId || firstCardId) {
-        const faturaRes = await getFatura(cartaoSelecionadoId || firstCardId, { ano, mes });
+      const cardToFetch = cartaoSelecionadoId || firstCardId;
+      if (cardToFetch) {
+        const faturaRes = await getFatura(cardToFetch, { ano, mes });
         setGastosFatura(faturaRes.data);
       }
 
     } catch (error) {
       console.error("Erro ao buscar dados:", error);
+      enqueueSnackbar('Erro ao carregar os dados do servidor.', { variant: 'error' });
     }
   };
 
@@ -75,10 +88,25 @@ export default function App() {
     try {
       await updateGasto(gastoId, updatedData);
       handleCloseEditModal();
-      fetchData(); // ATUALIZA TUDO!
+      fetchData();
+      enqueueSnackbar('Gasto atualizado com sucesso!', { variant: 'success' });
     } catch (error) {
       console.error("Falha ao atualizar gasto:", error);
-      alert("Não foi possível atualizar o gasto.");
+      enqueueSnackbar('Não foi possível atualizar o gasto.', { variant: 'error' });
+    }
+  };
+
+  const handleDeleteGasto = async (gastoId) => {
+    if (window.confirm("Tem certeza que deseja excluir este gasto? Esta ação não pode ser desfeita.")) {
+      try {
+        await deleteGasto(gastoId);
+        handleCloseEditModal();
+        fetchData();
+        enqueueSnackbar('Gasto excluído com sucesso.', { variant: 'info' });
+      } catch (error) {
+        console.error("Falha ao excluir gasto:", error);
+        enqueueSnackbar('Não foi possível excluir o gasto.', { variant: 'error' });
+      }
     }
   };
 
@@ -90,36 +118,38 @@ export default function App() {
         <Toolbar />
         <Routes>
           <Route 
-  path="/" 
-  element={
-    <Dashboard 
-      onEditGasto={handleOpenEditModal}
-      gastosDoMes={gastosDoMes}
-      comprasParceladas={comprasParceladas}
-      categorias={categorias}
-      cartoes={cartoes}
-      currentDate={currentDate}
-      setCurrentDate={setCurrentDate}
-      fetchData={fetchData}
-    />
-  } 
-/>
+            path="/" 
+            element={
+              <Dashboard 
+                onEditGasto={handleOpenEditModal}
+                dadosCompartilhados={{ 
+                  gastosDoMes, 
+                  comprasParceladas, 
+                  categorias, 
+                  cartoes: activeCards, // Passa apenas os cartões ativos
+                  currentDate 
+                }}
+                setCurrentDate={setCurrentDate}
+                fetchData={fetchData}
+              />
+            } 
+          />
           <Route path="/metas" element={<Metas metas={metas} fetchData={fetchData} />} />
           <Route 
-  path="/faturas" 
-  element={
-    <Faturas 
-      onEditGasto={handleOpenEditModal} 
-      cartoes={cartoes}
-      fetchData={fetchData}
-      gastosFatura={gastosFatura}
-      currentDate={currentDate}
-      setCurrentDate={setCurrentDate}
-      cartaoSelecionadoId={cartaoSelecionadoId}
-      setCartaoSelecionadoId={setCartaoSelecionadoId}
-    />
-  } 
-/>
+            path="/faturas" 
+            element={
+              <Faturas 
+                onEditGasto={handleOpenEditModal} 
+                allCards={allCards} // A única prop de cartões necessária
+                fetchData={fetchData}
+                gastosFatura={gastosFatura}
+                currentDate={currentDate}
+                setCurrentDate={setCurrentDate}
+                cartaoSelecionadoId={cartaoSelecionadoId}
+                setCartaoSelecionadoId={setCartaoSelecionadoId}
+              />
+            } 
+          />
         </Routes>
       </Box>
 
@@ -129,8 +159,9 @@ export default function App() {
           onClose={handleCloseEditModal}
           gasto={gastoParaEditar}
           onSave={handleSaveGasto}
+          onDelete={handleDeleteGasto}
           categorias={categorias}
-          cartoes={cartoes}
+          cartoes={activeCards} // O modal de edição também só precisa dos ativos
         />
       )}
     </Box>

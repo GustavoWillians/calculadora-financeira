@@ -9,13 +9,17 @@ class Categoria(Base):
     __tablename__ = "categorias"
     id = Column(Integer, primary_key=True, index=True)
     nome = Column(String, unique=True, index=True, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
     gastos = relationship("Gasto", back_populates="categoria")
 
 class CartaoCredito(Base):
     __tablename__ = "cartoes_credito"
+
     id = Column(Integer, primary_key=True, index=True)
     nome = Column(String, unique=True, index=True, nullable=False)
     dia_fechamento = Column(Integer, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    
     gastos = relationship("Gasto", back_populates="cartao")
 
 class Meta(Base):

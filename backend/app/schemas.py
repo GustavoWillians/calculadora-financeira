@@ -9,6 +9,7 @@ from datetime import date
 class Categoria(BaseModel):
     id: int
     nome: str
+    is_active: bool
 
     class Config:
         from_attributes = True # Permite que o Pydantic leia dados de objetos do SQLAlchemy
@@ -27,6 +28,7 @@ class CartaoCreditoCreate(CartaoCreditoBase):
 
 class CartaoCredito(CartaoCreditoBase):
     id: int
+    is_active: bool
 
     class Config:
         from_attributes = True

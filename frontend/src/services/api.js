@@ -14,6 +14,7 @@ export const getGastos = (params) => api.get('/gastos/', { params });
 export const getGastosParcelados = (params) => api.get('/gastos/parcelados', { params });
 export const createGasto = (gasto) => api.post('/gastos/', gasto);
 export const updateGasto = (id, gastoData) => api.put(`/gastos/${id}`, gastoData);
+export const deleteGasto = (id) => api.delete(`/gastos/${id}`);
 
 // --- Funções de Meta ---
 export const getMetas = () => api.get('/metas/');
@@ -23,9 +24,10 @@ export const deleteMeta = (id) => api.delete(`/metas/${id}`);
 export const deleteContribuicao = (id) => api.delete(`/contribuicoes/${id}`);
 
 // --- Funções de Cartão de Crédito ---
-export const getCartoes = () => api.get('/cartoes/');
+export const getCartoes = (params) => api.get('/cartoes/', { params });
 export const createCartao = (cartao) => api.post('/cartoes/', cartao);
-export const deleteCartao = (id) => api.delete(`/cartoes/${id}`);
+export const deactivateCartao = (id) => api.delete(`/cartoes/${id}`);
+export const reactivateCartao = (id) => api.post(`/cartoes/${id}/reactivate`);
 
 // --- Funções de Fatura ---
 export const getFatura = (cartaoId, params) => api.get(`/faturas/${cartaoId}`, { params });

@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Box, Grid, Typography, Card, CardContent, LinearProgress, Button, TextField, Dialog, DialogActions, DialogContent, DialogTitle, Divider, List, ListItem, ListItemText, Accordion, AccordionSummary, AccordionDetails, IconButton, CardActions } from '@mui/material';
+import { useSnackbar } from 'notistack';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { createMeta, deleteMeta, addContribuicaoToMeta, deleteContribuicao } from '../services/api';
@@ -41,7 +42,7 @@ const MetaCard = ({ meta, onContribuir, onDelete, onDeleteContribuicao }) => {
                         <AccordionSummary expandIcon={<ExpandMoreIcon />}><Typography sx={{ flexGrow: 1 }}>{responsavel}</Typography><Typography sx={{ fontWeight: 'bold' }}>{formatCurrency(dados.total)}</Typography></AccordionSummary>
                         <AccordionDetails sx={{ p: 0 }}>
                             <List dense>
-                                {dados.contribuicoes.map(c => (
+                                {(dados.contribuicoes || []).map(c => (
                                     <ListItem key={c.id} disableGutters secondaryAction={<IconButton edge="end" onClick={() => onDeleteContribuicao(c.id)}><DeleteIcon fontSize="small" /></IconButton>}>
                                         <ListItemText primary={formatCurrency(c.valor)} secondary={new Date(c.data_contribuicao).toLocaleDateString('pt-BR', { timeZone: 'UTC' })} />
                                     </ListItem>
@@ -61,6 +62,7 @@ const MetaCard = ({ meta, onContribuir, onDelete, onDeleteContribuicao }) => {
 };
 
 export default function Metas({ metas, fetchData }) {
+    const { enqueueSnackbar } = useSnackbar();
     const [openMeta, setOpenMeta] = useState(false);
     const [openContribuicao, setOpenContribuicao] = useState(false);
     const [metaSelecionadaId, setMetaSelecionadaId] = useState(null);
@@ -72,34 +74,54 @@ export default function Metas({ metas, fetchData }) {
     const [dataContribuicao, setDataContribuicao] = useState(getTodayString());
 
     const handleCreateMeta = async () => {
-        await createMeta({ nome: nomeMeta, valor_objetivo: parseFloat(valorObjetivo), data_objetivo: dataObjetivo });
-        fetchData();
-        setNomeMeta(''); setValorObjetivo(''); setDataObjetivo(getTodayString());
-        setOpenMeta(false);
+        try {
+            await createMeta({ nome: nomeMeta, valor_objetivo: parseFloat(valorObjetivo), data_objetivo: dataObjetivo });
+            fetchData();
+            setNomeMeta(''); setValorObjetivo(''); setDataObjetivo(getTodayString());
+            setOpenMeta(false);
+            enqueueSnackbar('Meta criada com sucesso!', { variant: 'success' });
+        } catch (error) {
+            enqueueSnackbar('Erro ao criar meta.', { variant: 'error' });
+        }
     };
 
     const handleDeleteMeta = async (id) => {
         if (window.confirm("Tem certeza que deseja excluir esta meta?")) {
-            await deleteMeta(id);
-            fetchData();
+            try {
+                await deleteMeta(id);
+                fetchData();
+                enqueueSnackbar('Meta excluída com sucesso.', { variant: 'info' });
+            } catch (error) {
+                enqueueSnackbar('Erro ao excluir meta.', { variant: 'error' });
+            }
         }
     };
 
     const handleAddContribuicao = async () => {
-        await addContribuicaoToMeta(metaSelecionadaId, {
-            valor: parseFloat(valorContribuicao),
-            responsavel: responsavelContribuicao,
-            data_contribuicao: dataContribuicao,
-        });
-        fetchData();
-        setValorContribuicao(''); setResponsavelContribuicao('');
-        setOpenContribuicao(false);
+        try {
+            await addContribuicaoToMeta(metaSelecionadaId, {
+                valor: parseFloat(valorContribuicao),
+                responsavel: responsavelContribuicao,
+                data_contribuicao: dataContribuicao,
+            });
+            fetchData();
+            setValorContribuicao(''); setResponsavelContribuicao('');
+            setOpenContribuicao(false);
+            enqueueSnackbar('Contribuição adicionada!', { variant: 'success' });
+        } catch (error) {
+            enqueueSnackbar('Erro ao adicionar contribuição.', { variant: 'error' });
+        }
     };
 
     const handleDeleteContribuicao = async (contribuicaoId) => {
         if (window.confirm("Excluir esta contribuição?")) {
-            await deleteContribuicao(contribuicaoId);
-            fetchData();
+            try {
+                await deleteContribuicao(contribuicaoId);
+                fetchData();
+                enqueueSnackbar('Contribuição excluída.', { variant: 'info' });
+            } catch (error) {
+                enqueueSnackbar('Erro ao excluir contribuição.', { variant: 'error' });
+            }
         }
     }
 
