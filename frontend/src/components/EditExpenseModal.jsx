@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, FormControl, InputLabel, Select, MenuItem, Box, Grid, FormControlLabel, Switch } from '@mui/material';
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, FormControl, InputLabel, Select, MenuItem, Box, Grid, FormControlLabel, Switch, Typography } from '@mui/material';
 
 const getFormattedDate = (date) => new Date(date).toISOString().split('T')[0];
 
 export default function EditExpenseModal({ open, onClose, gasto, onSave, onDelete, categorias, cartoes }) {
-  const [descricao, setDescricao] = useState('');
+  const [nome, setNome] = useState(''); // 'nome' em vez de 'descricao'
+  const [anotacao, setAnotacao] = useState(''); // NOVO CAMPO
   const [valor, setValor] = useState('');
   const [responsavel, setResponsavel] = useState('');
   const [categoriaId, setCategoriaId] = useState('');
@@ -16,7 +17,8 @@ export default function EditExpenseModal({ open, onClose, gasto, onSave, onDelet
 
   useEffect(() => {
     if (gasto) {
-      setDescricao(gasto.descricao || '');
+      setNome(gasto.nome || ''); // <-- ATUALIZADO
+      setAnotacao(gasto.anotacao || ''); // <-- NOVO CAMPO
       setValor(gasto.valor || '');
       setResponsavel(gasto.responsavel || '');
       setCategoriaId(gasto.categoria?.id || '');
@@ -50,7 +52,8 @@ export default function EditExpenseModal({ open, onClose, gasto, onSave, onDelet
 
   const handleSave = () => {
     const updatedGasto = {
-      descricao,
+      nome, // <-- ATUALIZADO
+      anotacao, // <-- NOVO CAMPO
       valor: parseFloat(valor),
       responsavel,
       categoria_id: parseInt(categoriaId),
@@ -71,7 +74,9 @@ export default function EditExpenseModal({ open, onClose, gasto, onSave, onDelet
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Editar Gasto</DialogTitle>
       <DialogContent>
-        <TextField autoFocus margin="dense" label="Descrição" fullWidth value={descricao} onChange={(e) => setDescricao(e.target.value)} sx={{mt: 2}} />
+        <TextField autoFocus margin="dense" label="Nome" fullWidth value={nome} onChange={(e) => setNome(e.target.value)} sx={{mt: 2}} />
+        <TextField margin="dense" label="Anotação" fullWidth multiline rows={2} value={anotacao} onChange={(e) => setAnotacao(e.target.value)} />
+
         <TextField margin="dense" label="Valor Total" type="number" fullWidth value={valor} onChange={(e) => setValor(e.target.value)} disabled={isParcelado} />
         <TextField margin="dense" label="Responsável" fullWidth value={responsavel} onChange={(e) => setResponsavel(e.target.value)} />
         <FormControl fullWidth margin="dense">
@@ -82,10 +87,9 @@ export default function EditExpenseModal({ open, onClose, gasto, onSave, onDelet
         </FormControl>
         <FormControl fullWidth margin="dense">
           <InputLabel>Pagamento</InputLabel>
-          {/* O onChange agora chama a nova função handleCartaoChange */}
           <Select value={cartaoId} label="Pagamento" onChange={handleCartaoChange}>
             <MenuItem value="debito">Débito / Dinheiro</MenuItem>
-            {(cartoes || []).map((cartao) => (<MenuItem key={cartao.id} value={cartao.id}>{cartao.nome}</MenuItem>))}
+            {(cartoes || []).map((cartao) => (<MenuItem key={cartao.id} value={cartao.id}>{cartao.nome} {!cartao.is_active && '(Inativo)'}</MenuItem>))}
           </Select>
         </FormControl>
         {cartaoId !== 'debito' && (

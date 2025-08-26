@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Box, Typography, Button, Dialog, DialogTitle, DialogContent, TextField, DialogActions, Select, MenuItem, FormControl, InputLabel, Grid, Paper, IconButton, List, ListItem, ListItemText, Divider } from '@mui/material';
 import { useSnackbar } from 'notistack';
+import { format } from 'date-fns';
 import ArrowBackIosIcon from '@mui/icons-material/ArrowBackIos';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 import BlockIcon from '@mui/icons-material/Block';
@@ -9,30 +10,58 @@ import { createCartao, deactivateCartao, reactivateCartao, getFatura } from '../
 import ExpenseTable from '../components/ExpenseTable';
 import { formatCurrency } from '../utils/formatters';
 
-export default function Faturas({ 
-  onEditGasto, allCards, fetchData, gastosFatura, currentDate, 
-  setCurrentDate, cartaoSelecionadoId, setCartaoSelecionadoId 
-}) {
+export default function Faturas({ onEditGasto, allCards, fetchData }) {
   const { enqueueSnackbar } = useSnackbar();
+  
+  const [gastosFatura, setGastosFatura] = useState([]);
+  const [periodoFatura, setPeriodoFatura] = useState(null);
+  const [cartaoSelecionadoId, setCartaoSelecionadoId] = useState('');
+  const [currentDate, setCurrentDate] = useState(new Date());
   const [responsavelFiltro, setResponsavelFiltro] = useState('Todos');
   const [open, setOpen] = useState(false);
   const [nomeCartao, setNomeCartao] = useState('');
   const [diaFechamento, setDiaFechamento] = useState('');
 
-  // Deriva as duas listas a partir da prop 'allCards'
   const activeCards = useMemo(() => (allCards || []).filter(c => c.is_active), [allCards]);
   const inactiveCards = useMemo(() => (allCards || []).filter(c => !c.is_active), [allCards]);
 
-  // Efeito para setar o primeiro cartão ativo como padrão
   useEffect(() => {
-    if (activeCards.length > 0 && !activeCards.find(c => c.id === cartaoSelecionadoId)) {
+    // Tenta selecionar o primeiro cartão ativo, se houver. Senão, o primeiro de todos.
+    if (activeCards.length > 0 && !cartaoSelecionadoId) {
       setCartaoSelecionadoId(activeCards[0].id);
-    } else if (activeCards.length === 0) {
-      setCartaoSelecionadoId('');
+    } else if (allCards.length > 0 && !cartaoSelecionadoId) {
+      setCartaoSelecionadoId(allCards[0].id);
     }
-  }, [activeCards, cartaoSelecionadoId, setCartaoSelecionadoId]);
+  }, [allCards, activeCards, cartaoSelecionadoId]);
+
+  useEffect(() => {
+    const fetchFaturaData = async () => {
+      if (!cartaoSelecionadoId) {
+        setGastosFatura([]);
+        setPeriodoFatura(null);
+        return;
+      };
+      
+      const ano = currentDate.getFullYear();
+      const mes = currentDate.getMonth() + 1;
+      
+      try {
+        const res = await getFatura(cartaoSelecionadoId, { ano, mes });
+        setGastosFatura(res.data.gastos);
+        setPeriodoFatura({
+          inicio: res.data.periodo_inicio,
+          fim: res.data.periodo_fim
+        });
+      } catch (error) {
+        console.error("Erro ao buscar fatura:", error);
+        setGastosFatura([]);
+        setPeriodoFatura(null);
+      }
+    };
+    fetchFaturaData();
+  }, [cartaoSelecionadoId, currentDate]);
   
-  const cartaoSelecionado = useMemo(() => (activeCards || []).find(c => c.id === cartaoSelecionadoId), [activeCards, cartaoSelecionadoId]);
+  const cartaoSelecionado = useMemo(() => (allCards || []).find(c => c.id === cartaoSelecionadoId), [allCards, cartaoSelecionadoId]);
   
   const responsaveisUnicos = useMemo(() => {
     const nomes = new Set((gastosFatura || []).map(g => g.responsavel));
@@ -48,7 +77,7 @@ export default function Faturas({
     if (!nomeCartao || !diaFechamento) return enqueueSnackbar('Preencha todos os campos.', { variant: 'warning' });
     try {
       await createCartao({ nome: nomeCartao, dia_fechamento: parseInt(diaFechamento) });
-      fetchData(); // Chama a função do App.jsx para recarregar todos os dados
+      fetchData();
       setNomeCartao('');
       setDiaFechamento('');
       enqueueSnackbar('Cartão adicionado com sucesso!', { variant: 'success' });
@@ -82,8 +111,15 @@ export default function Faturas({
   const handlePreviousMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
   const handleNextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
   const displayMonth = currentDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }).replace(/^\w/, c => c.toUpperCase());
-  
   const totalFatura = useMemo(() => (gastosFiltrados || []).reduce((sum, g) => sum + g.valor, 0), [gastosFiltrados]);
+  
+  // Função auxiliar para corrigir o fuso horário apenas para exibição
+  const formatLocalDate = (dateString) => {
+    if (!dateString) return '';
+    // Adiciona o tempo para evitar que o JS converta para o dia anterior
+    const date = new Date(`${dateString}T00:00:00`);
+    return format(date, 'dd/MM/yyyy');
+  }
 
   return (
     <Box>
@@ -97,8 +133,13 @@ export default function Faturas({
           <Grid item xs={12} md={4}>
             <FormControl fullWidth>
               <InputLabel>Cartão</InputLabel>
-              <Select value={cartaoSelecionadoId} label="Cartão" onChange={(e) => setCartaoSelecionadoId(e.target.value)}>
-                {(activeCards || []).map((c) => <MenuItem key={c.id} value={c.id}>{c.nome}</MenuItem>)}
+              <Select value={cartaoSelecionadoId || ''} label="Cartão" onChange={(e) => setCartaoSelecionadoId(e.target.value)}>
+                {/* AQUI ESTÁ A MUDANÇA: Mapeando TODOS os cartões */}
+                {(allCards || []).map((c) => (
+                  <MenuItem key={c.id} value={c.id}>
+                    {c.nome} {!c.is_active && '(Inativo)'}
+                  </MenuItem>
+                ))}
               </Select>
             </FormControl>
           </Grid>
@@ -120,9 +161,17 @@ export default function Faturas({
             </Grid>
             <Grid item xs={12} md={8}>
                 {cartaoSelecionado && (
-                    <Typography variant="body1" color="text.secondary">
-                        Fechamento da fatura: <strong>Dia {cartaoSelecionado.dia_fechamento} de cada mês</strong>
-                    </Typography>
+                    <Box>
+                        {/* CAMPO DE VOLTA, USANDO OS DADOS VINDOS DA API */}
+                        {periodoFatura && (
+                          <Typography variant="body2" color="text.secondary">
+                              Período de Compras: <strong>{formatLocalDate(periodoFatura.inicio)} - {formatLocalDate(periodoFatura.fim)}</strong>
+                          </Typography>
+                        )}
+                        <Typography variant="body1" color="text.secondary">
+                            Fechamento da fatura: <strong>Dia {cartaoSelecionado.dia_fechamento}</strong>
+                        </Typography>
+                    </Box>
                 )}
             </Grid>
         </Grid>
@@ -171,7 +220,7 @@ export default function Faturas({
           <TextField margin="dense" label="Dia do Fechamento da Fatura" type="number" fullWidth variant="standard" value={diaFechamento} onChange={(e) => setDiaFechamento(e.target.value)} />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpen(false)}>Fechar</Button>
+          <Button onClick={() => setOpen(false)}>Cancelar</Button>
           <Button onClick={handleCreateCartao} variant="contained">Adicionar Cartão</Button>
         </DialogActions>
       </Dialog>

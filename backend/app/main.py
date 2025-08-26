@@ -62,12 +62,25 @@ def _get_gastos_por_periodo(db: Session, data_inicio: datetime, data_fim: dateti
             if data_inicio <= data_parcela_atual < data_fim:
                 gasto_virtual = schemas.Gasto.from_orm(compra)
                 gasto_virtual.valor = compra.valor_parcela
-                gasto_virtual.data = data_parcela_atual
+                gasto_virtual.data = compra.data
                 gasto_virtual.parcela_atual = i + 1
                 gastos_parcela_do_periodo.append(gasto_virtual)
     gastos_totais = gastos_normais + gastos_parcela_do_periodo
-    gastos_totais.sort(key=lambda x: x.data, reverse=True)
+    gastos_totais.sort(key=lambda x: (x.data, x.id), reverse=True)
     return gastos_totais
+
+def _calcular_periodo_fatura(ano: int, mes: int, dia_fechamento: int):
+    try:
+        fechamento_atual = datetime(ano, mes, dia_fechamento)
+    except ValueError:
+        fechamento_atual = (datetime(ano, mes, 1) + relativedelta(months=1)) - timedelta(days=1)
+    
+    periodo_fim = fechamento_atual
+    
+    fechamento_anterior = periodo_fim - relativedelta(months=1)
+    periodo_inicio = fechamento_anterior + timedelta(days=1)
+    
+    return periodo_inicio, periodo_fim
 
 @app.get("/")
 def read_root():
@@ -76,7 +89,6 @@ def read_root():
 @app.post("/categorias/", response_model=schemas.Categoria, status_code=201)
 def create_categoria(categoria: schemas.CategoriaCreate, db: Session = Depends(get_db)):
     db_categoria = db.query(models.Categoria).filter(models.Categoria.nome == categoria.nome).first()
-
     if db_categoria:
         if not db_categoria.is_active:
             db_categoria.is_active = True
@@ -85,8 +97,7 @@ def create_categoria(categoria: schemas.CategoriaCreate, db: Session = Depends(g
             return db_categoria
         else:
             raise HTTPException(status_code=400, detail="Categoria com este nome já existe")
-    
-    new_categoria = models.Categoria(nome=categoria.nome)
+    new_categoria = models.Categoria(**categoria.model_dump())
     db.add(new_categoria)
     db.commit()
     db.refresh(new_categoria)
@@ -96,14 +107,12 @@ def create_categoria(categoria: schemas.CategoriaCreate, db: Session = Depends(g
 def read_categorias(db: Session = Depends(get_db)):
     return db.query(models.Categoria).filter(models.Categoria.is_active == True).order_by(models.Categoria.nome).all()
 
-@app.delete("/categorias/{categoria_id}", status_code=200) # Mudamos o status code para 200 para poder enviar uma resposta
+@app.delete("/categorias/{categoria_id}", status_code=200)
 def delete_categoria(categoria_id: int, db: Session = Depends(get_db)):
     db_categoria = db.query(models.Categoria).get(categoria_id)
     if not db_categoria:
         raise HTTPException(status_code=404, detail="Categoria não encontrada")
-
     gastos_associados = db.query(models.Gasto).filter(models.Gasto.categoria_id == categoria_id).count()
-
     if gastos_associados > 0:
         db_categoria.is_active = False
         db.commit()
@@ -115,7 +124,7 @@ def delete_categoria(categoria_id: int, db: Session = Depends(get_db)):
 
 @app.post("/gastos/", response_model=schemas.Gasto, status_code=201)
 def create_gasto(gasto: schemas.GastoCreate, db: Session = Depends(get_db)):
-    novo_gasto = models.Gasto(**gasto.dict())
+    novo_gasto = models.Gasto(**gasto.model_dump())
     db.add(novo_gasto)
     db.commit()
     db.refresh(novo_gasto)
@@ -126,7 +135,7 @@ def update_gasto(gasto_id: int, gasto_update: schemas.GastoUpdate, db: Session =
     db_gasto = db.query(models.Gasto).get(gasto_id)
     if not db_gasto:
         raise HTTPException(status_code=404, detail="Gasto não encontrado")
-    update_data = gasto_update.dict(exclude_unset=True)
+    update_data = gasto_update.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_gasto, key, value)
     db.add(db_gasto)
@@ -134,7 +143,6 @@ def update_gasto(gasto_id: int, gasto_update: schemas.GastoUpdate, db: Session =
     db.refresh(db_gasto)
     return db_gasto
 
-# --- NOVO ENDPOINT DE EXCLUSÃO ---
 @app.delete("/gastos/{gasto_id}", status_code=204)
 def delete_gasto(gasto_id: int, db: Session = Depends(get_db)):
     db_gasto = db.query(models.Gasto).get(gasto_id)
@@ -145,12 +153,15 @@ def delete_gasto(gasto_id: int, db: Session = Depends(get_db)):
     return {"detail": "Gasto deletado com sucesso"}
 
 @app.get("/gastos/", response_model=List[schemas.Gasto])
-def read_gastos(db: Session = Depends(get_db), ano: Optional[int] = None, mes: Optional[int] = None):
+def read_gastos(db: Session = Depends(get_db), ano: Optional[int] = None, mes: Optional[int] = None, tipo_pagamento: Optional[str] = None):
     if not ano or not mes:
         raise HTTPException(status_code=400, detail="Ano e mês são obrigatórios")
     data_inicio = datetime(ano, mes, 1)
     data_fim = data_inicio + relativedelta(months=+1)
-    return _get_gastos_por_periodo(db, data_inicio, data_fim)
+    gastos = _get_gastos_por_periodo(db, data_inicio, data_fim)
+    if tipo_pagamento == 'debito':
+        gastos = [g for g in gastos if g.cartao is None]
+    return gastos
 
 @app.get("/gastos/parcelados", response_model=List[schemas.Gasto])
 def read_gastos_parcelados(db: Session = Depends(get_db), ano: Optional[int] = None, mes: Optional[int] = None):
@@ -166,34 +177,40 @@ def read_gastos_parcelados(db: Session = Depends(get_db), ano: Optional[int] = N
     ).filter(models.Gasto.is_parcelado == True).order_by(models.Gasto.data.desc()).all()
     resultados_ativos_no_mes = []
     for compra in compras_parceladas:
-        for i in range(compra.numero_parcelas):
-            data_parcela_atual = compra.data + relativedelta(months=+i)
-            if data_inicio_mes <= data_parcela_atual < data_fim_mes:
+        data_ultima_parcela = compra.data + relativedelta(months=+(compra.numero_parcelas - 1))
+        fim_validade_parcela = (data_ultima_parcela + relativedelta(months=1)).replace(day=1)
+        if datetime.utcnow() < fim_validade_parcela:
+            compra_inicio_mes = compra.data.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            hoje_inicio_mes = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            delta = relativedelta(hoje_inicio_mes, compra_inicio_mes)
+            parcela_atual = (delta.years * 12 + delta.months) + 1
+            if parcela_atual <= compra.numero_parcelas:
                 gasto_schema = schemas.Gasto.from_orm(compra)
-                gasto_schema.parcela_atual = i + 1
+                gasto_schema.parcela_atual = parcela_atual
                 resultados_ativos_no_mes.append(gasto_schema)
-                break
     return resultados_ativos_no_mes
 
-@app.get("/faturas/{cartao_id}", response_model=List[schemas.Gasto])
+@app.get("/faturas/{cartao_id}", response_model=schemas.Fatura)
 def read_fatura(cartao_id: int, ano: int, mes: int, db: Session = Depends(get_db)):
     cartao = db.query(models.CartaoCredito).get(cartao_id)
     if not cartao:
         raise HTTPException(status_code=404, detail="Cartão não encontrado")
-    dia_fechamento = cartao.dia_fechamento
-    try:
-        data_fechamento_atual = (datetime(ano, mes, 1)).replace(day=dia_fechamento)
-    except ValueError:
-        ultimo_dia_mes = (datetime(ano, mes, 1) + relativedelta(months=1)) - relativedelta(days=1)
-        data_fechamento_atual = ultimo_dia_mes
-    data_fechamento_anterior = data_fechamento_atual - relativedelta(months=1)
-    periodo_inicio = data_fechamento_anterior + timedelta(days=1)
-    periodo_fim = data_fechamento_atual + timedelta(days=1)
-    return _get_gastos_por_periodo(db, periodo_inicio, periodo_fim, cartao_id)
+
+    periodo_inicio, periodo_fim_real = _calcular_periodo_fatura(ano, mes, cartao.dia_fechamento)
+    
+    periodo_fim_query = periodo_fim_real + timedelta(days=1)
+    
+    gastos_do_periodo = _get_gastos_por_periodo(db, periodo_inicio, periodo_fim_query, cartao_id)
+
+    return {
+        "gastos": gastos_do_periodo,
+        "periodo_inicio": periodo_inicio.date(),
+        "periodo_fim": periodo_fim_real.date()
+    }
 
 @app.post("/cartoes/", response_model=schemas.CartaoCredito, status_code=201)
 def create_cartao(cartao: schemas.CartaoCreditoCreate, db: Session = Depends(get_db)):
-    novo_cartao = models.CartaoCredito(**cartao.dict())
+    novo_cartao = models.CartaoCredito(**cartao.model_dump())
     db.add(novo_cartao)
     db.commit()
     db.refresh(novo_cartao)
@@ -203,29 +220,24 @@ def create_cartao(cartao: schemas.CartaoCreditoCreate, db: Session = Depends(get
 def read_cartoes(db: Session = Depends(get_db), include_inactive: bool = False):
     query = db.query(models.CartaoCredito)
     if not include_inactive:
-        # Por padrão, para os formulários, retorna apenas os cartões ativos
         query = query.filter(models.CartaoCredito.is_active == True)
     return query.order_by(models.CartaoCredito.nome).all()
 
-# RENOMEIE esta função de delete_cartao para deactivate_cartao
 @app.delete("/cartoes/{cartao_id}", response_model=schemas.CartaoCredito)
 def deactivate_cartao(cartao_id: int, db: Session = Depends(get_db)):
     db_cartao = db.query(models.CartaoCredito).get(cartao_id)
     if not db_cartao:
         raise HTTPException(status_code=404, detail="Cartão não encontrado")
-    
     db_cartao.is_active = False
     db.commit()
     db.refresh(db_cartao)
     return db_cartao
 
-# ADICIONE esta nova função
 @app.post("/cartoes/{cartao_id}/reactivate", response_model=schemas.CartaoCredito)
 def reactivate_cartao(cartao_id: int, db: Session = Depends(get_db)):
     db_cartao = db.query(models.CartaoCredito).get(cartao_id)
     if not db_cartao:
         raise HTTPException(status_code=404, detail="Cartão não encontrado")
-    
     db_cartao.is_active = True
     db.commit()
     db.refresh(db_cartao)
@@ -233,7 +245,7 @@ def reactivate_cartao(cartao_id: int, db: Session = Depends(get_db)):
 
 @app.post("/metas/", response_model=schemas.Meta, status_code=201)
 def create_meta(meta: schemas.MetaCreate, db: Session = Depends(get_db)):
-    nova_meta = models.Meta(**meta.dict())
+    nova_meta = models.Meta(**meta.model_dump())
     db.add(nova_meta)
     db.commit()
     db.refresh(nova_meta)
@@ -257,7 +269,7 @@ def create_contribuicao_para_meta(meta_id: int, contribuicao: schemas.Contribuic
     db_meta = db.query(models.Meta).get(meta_id)
     if not db_meta:
         raise HTTPException(status_code=404, detail="Meta não encontrada")
-    nova_contribuicao = models.Contribuicao(**contribuicao.dict(), meta_id=meta_id)
+    nova_contribuicao = models.Contribuicao(**contribuicao.model_dump(), meta_id=meta_id)
     db.add(nova_contribuicao)
     db.commit()
     db.refresh(nova_contribuicao)

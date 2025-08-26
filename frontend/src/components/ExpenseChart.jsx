@@ -1,6 +1,7 @@
 import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
 import { Paper, Typography } from '@mui/material';
+import CustomTooltip from './CustomTooltip'; // <-- Importe o novo componente
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF', '#FF1943'];
 
@@ -15,11 +16,10 @@ export default function ExpenseChart({ data }) {
           <CartesianGrid strokeDasharray="3 3" vertical={false} />
           <XAxis dataKey="name" />
           <YAxis tickFormatter={(value) => `R$${value}`} />
-          <Tooltip formatter={(value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)} />
+          <Tooltip content={<CustomTooltip />} />
           <Legend />
-          {/* AQUI ESTÁ A MUDANÇA: adicionamos barSize={30} de volta */}
           <Bar dataKey="valor" name="Total Gasto" barSize={30}>
-            {data.map((entry, index) => (
+            {(data || []).map((entry, index) => (
               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
             ))}
           </Bar>

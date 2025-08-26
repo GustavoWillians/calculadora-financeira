@@ -1,18 +1,21 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Box, Grid, Typography, FormControl, InputLabel, Select, MenuItem, Paper, IconButton, Tabs, Tab } from '@mui/material';
 import { useSnackbar } from 'notistack';
+import { addMonths, subMonths, startOfMonth, endOfMonth, startOfDay, endOfDay, format } from 'date-fns';
 import ArrowBackIosIcon from '@mui/icons-material/ArrowBackIos';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import FunctionsIcon from '@mui/icons-material/Functions';
+import CreditCardIcon from '@mui/icons-material/CreditCard';
+import PaymentsIcon from '@mui/icons-material/Payments';
 
 import KpiCard from '../components/KpiCard';
 import ExpenseChart from '../components/ExpenseChart';
 import ExpenseTable from '../components/ExpenseTable';
 import InstallmentTable from '../components/InstallmentTable';
 import Forms from '../components/Forms';
-import { getCategorias, createCategoria, deleteCategoria, getGastos, createGasto, getCartoes, getGastosParcelados } from '../services/api'; 
+import { getCategorias, createCategoria, deleteCategoria, getGastos, createGasto, getCartoes, updateGasto, deleteGasto } from '../services/api';
 import { formatCurrency } from '../utils/formatters';
 
 const getTodayString = () => new Date().toISOString().split('T')[0];
@@ -21,21 +24,26 @@ const processarDadosGrafico = (gastos) => {
     if (!Array.isArray(gastos) || gastos.length === 0) return [];
     const gastosPorCategoria = gastos.reduce((acc, gasto) => {
         const nomeCategoria = gasto.categoria?.nome || 'Sem Categoria';
-        if (!acc[nomeCategoria]) acc[nomeCategoria] = 0;
-        acc[nomeCategoria] += gasto.valor;
+        if (!acc[nomeCategoria]) {
+            acc[nomeCategoria] = { total: 0, gastos: [] };
+        }
+        acc[nomeCategoria].total += gasto.valor;
+        acc[nomeCategoria].gastos.push({ descricao: gasto.nome, valor: gasto.valor }); // <-- USANDO O CAMPO 'nome'
         return acc;
     }, {});
     return Object.keys(gastosPorCategoria).map(nome => ({
         name: nome,
-        valor: parseFloat(gastosPorCategoria[nome].toFixed(2)),
+        valor: parseFloat(gastosPorCategoria[nome].total.toFixed(2)),
+        gastos: gastosPorCategoria[nome].gastos,
     }));
 };
 
 export default function Dashboard({ onEditGasto, dadosCompartilhados, setCurrentDate, fetchData }) {
-    const { gastosDoMes, comprasParceladas, categorias, cartoes, currentDate } = dadosCompartilhados;
+    const { gastosRecentes, gastosDoMes, comprasParceladas, categorias, cartoes, currentDate } = dadosCompartilhados;
     const { enqueueSnackbar } = useSnackbar();
 
-    const [descricao, setDescricao] = useState('');
+    const [nome, setNome] = useState(''); // <-- RENOMEADO
+    const [anotacao, setAnotacao] = useState(''); // <-- NOVO CAMPO
     const [valor, setValor] = useState('');
     const [responsavel, setResponsavel] = useState('');
     const [categoriaId, setCategoriaId] = useState('');
@@ -45,9 +53,12 @@ export default function Dashboard({ onEditGasto, dadosCompartilhados, setCurrent
     const [isParcelado, setIsParcelado] = useState(false);
     const [numParcelas, setNumParcelas] = useState(2);
     const [valorParcela, setValorParcela] = useState('');
-    const [responsavelFiltro, setResponsavelFiltro] = useState('Todos');
     const [tabValue, setTabValue] = useState(0);
-
+    const [kpiCardFilter, setKpiCardFilter] = useState('todos');
+    const [chartSourceFilter, setChartSourceFilter] = useState('todos');
+    const [chartCardFilter, setChartCardFilter] = useState('todos');
+    const [responsavelFiltro, setResponsavelFiltro] = useState('Todos');
+    
     const responsaveisUnicos = useMemo(() => {
         const nomes = new Set((gastosDoMes || []).map(g => g.responsavel));
         return ['Todos', ...Array.from(nomes)];
@@ -57,22 +68,94 @@ export default function Dashboard({ onEditGasto, dadosCompartilhados, setCurrent
         if (responsavelFiltro === 'Todos') return gastosDoMes;
         return (gastosDoMes || []).filter(g => g.responsavel === responsavelFiltro);
     }, [gastosDoMes, responsavelFiltro]);
-    
-    const dadosGrafico = useMemo(() => processarDadosGrafico(gastosFiltrados), [gastosFiltrados]);
 
-    const { gastoTotal, numTransacoes, gastoMedio } = useMemo(() => {
-        const total = (gastosFiltrados || []).reduce((sum, gasto) => sum + gasto.valor, 0);
-        const count = (gastosFiltrados || []).length;
-        return { gastoTotal: total, numTransacoes: count, gastoMedio: count > 0 ? (total / count) : 0 };
-    }, [gastosFiltrados]);
+    const parcelasAtivasNoMes = useMemo(() => {
+        return (gastosDoMes || []).filter(g => g.is_parcelado);
+    }, [gastosDoMes]);
+
+    const dadosGrafico = useMemo(() => {
+        const gastosDebito = (gastosDoMes || []).filter(g => !g.cartao);
+        const gastosCartao = (gastosDoMes || []).filter(g => g.cartao);
+        
+        let dadosIniciais = [];
+        if (chartSourceFilter === 'todos') {
+            dadosIniciais = gastosDoMes;
+        } else if (chartSourceFilter === 'debito') {
+            dadosIniciais = gastosDebito;
+        } else if (chartSourceFilter === 'cartao') {
+            if (chartCardFilter === 'todos') {
+                dadosIniciais = gastosCartao;
+            } else {
+                dadosIniciais = gastosCartao.filter(g => g.cartao.id === chartCardFilter);
+            }
+        }
+        const dadosFiltradosPorResponsavel = responsavelFiltro === 'Todos'
+            ? dadosIniciais
+            : (dadosIniciais || []).filter(g => g.responsavel === responsavelFiltro);
+        return processarDadosGrafico(dadosFiltradosPorResponsavel);
+    }, [gastosDoMes, chartSourceFilter, chartCardFilter, responsavelFiltro]);
+
+    const { gastoTotal, totalCartoesFiltrado, totalDebito } = useMemo(() => {
+        const gastosCartao = (gastosDoMes || []).filter(g => g.cartao);
+        const gastosDebito = (gastosDoMes || []).filter(g => !g.cartao);
+        const totalDebito = gastosDebito.reduce((sum, g) => sum + g.valor, 0);
+        
+        const cartoesParaSomar = kpiCardFilter === 'todos' 
+            ? gastosCartao 
+            : gastosCartao.filter(g => g.cartao.id === kpiCardFilter);
+        const totalCartoesFiltrado = cartoesParaSomar.reduce((sum, g) => sum + g.valor, 0);
+        
+        const gastoTotalGeral = totalDebito + gastosCartao.reduce((sum, g) => sum + g.valor, 0);
+        
+        return { gastoTotal: gastoTotalGeral, totalCartoesFiltrado, totalDebito };
+    }, [gastosDoMes, kpiCardFilter]);
+    
+    const numTransacoes = useMemo(() => gastosFiltrados.length, [gastosFiltrados]);
+    const gastoMedio = useMemo(() => numTransacoes > 0 ? (gastoTotal / numTransacoes) : 0, [gastoTotal, numTransacoes]);
+
+    const proximaFaturaInfo = useMemo(() => {
+        if (kpiCardFilter === 'todos' || !cartoes.length || !gastosRecentes) {
+            return null;
+        }
+        const cartao = cartoes.find(c => c.id === kpiCardFilter);
+        if (!cartao) return null;
+
+        const dataReferencia = currentDate; 
+        let dataFechamento = new Date(dataReferencia.getFullYear(), dataReferencia.getMonth(), cartao.dia_fechamento);
+        if (dataReferencia.getDate() > cartao.dia_fechamento) {
+            dataFechamento = addMonths(dataFechamento, 1);
+        }
+        
+        const dataFechamentoAnterior = subMonths(dataFechamento, 1);
+        const inicioPeriodo = new Date(dataFechamentoAnterior.getFullYear(), dataFechamentoAnterior.getMonth(), dataFechamentoAnterior.getDate() + 1);
+        const fimPeriodo = dataFechamento;
+
+        const gastosDaFatura = gastosRecentes.filter(g => {
+            if (g.cartao?.id !== cartao.id) return false;
+            const dataGasto = new Date(g.data);
+            return dataGasto >= startOfDay(inicioPeriodo) && dataGasto <= endOfDay(fimPeriodo);
+        });
+
+        const total = gastosDaFatura.reduce((sum, g) => {
+             const valorASomar = g.is_parcelado ? (g.valor_parcela || 0) : g.valor;
+            return sum + valorASomar;
+        }, 0);
+
+        return {
+            total: formatCurrency(total),
+            label: `Total p/ fatura (fecha em ${format(dataFechamento, 'dd/MM')})`
+        };
+    }, [kpiCardFilter, cartoes, gastosRecentes, currentDate]);
 
     const handleGastoSubmit = async (e) => {
         e.preventDefault();
-        if (!descricao || !valor || !categoriaId || !dataGasto) {
+        if (!nome || !valor || !categoriaId || !dataGasto) { // <-- USANDO 'nome'
             return enqueueSnackbar("Por favor, preencha todos os campos obrigatórios.", { variant: 'warning' });
         }
         const novoGasto = { 
-            descricao, valor: parseFloat(valor), responsavel: responsavel || 'Eu', 
+            nome, // <-- USANDO 'nome'
+            anotacao, // <-- NOVO CAMPO
+            valor: parseFloat(valor), responsavel: responsavel || 'Eu', 
             categoria_id: parseInt(categoriaId), data: dataGasto,
             cartao_id: cartaoId === 'debito' ? null : parseInt(cartaoId),
             is_parcelado: isParcelado,
@@ -81,7 +164,7 @@ export default function Dashboard({ onEditGasto, dadosCompartilhados, setCurrent
         };
         try {
             await createGasto(novoGasto);
-            setDescricao(''); setValor(''); setResponsavel(''); setDataGasto(getTodayString()); 
+            setNome(''); setAnotacao(''); setValor(''); setResponsavel(''); setDataGasto(getTodayString()); 
             setCartaoId('debito'); setIsParcelado(false); setNumParcelas(2); setValorParcela('');
             fetchData();
             enqueueSnackbar('Gasto registrado com sucesso!', { variant: 'success' });
@@ -106,24 +189,23 @@ export default function Dashboard({ onEditGasto, dadosCompartilhados, setCurrent
     };
 
     const handleCategoriaDelete = async (categoriaId) => {
-    if (window.confirm("Tem certeza que deseja remover esta categoria?")) {
-      try {
-        const response = await deleteCategoria(categoriaId);
-        // Usa o notistack para mostrar a mensagem vinda do backend
-        enqueueSnackbar(response.data.message, { 
-          variant: response.data.status === 'soft_deleted' ? 'warning' : 'success' 
-        });
-        fetchData(); // Recarrega os dados
-      } catch (error) {
-        console.error("Erro ao remover categoria:", error);
-        enqueueSnackbar('Falha ao remover categoria.', { variant: 'error' });
-      }
-    }
-  };
+        if (window.confirm("Tem certeza que deseja remover esta categoria?")) {
+          try {
+            const response = await deleteCategoria(categoriaId);
+            enqueueSnackbar(response.data.message, { 
+              variant: response.data.status === 'soft_deleted' ? 'warning' : 'success' 
+            });
+            fetchData();
+          } catch (error) {
+            console.error("Erro ao remover categoria:", error);
+            enqueueSnackbar('Falha ao remover categoria.', { variant: 'error' });
+          }
+        }
+    };
     
     const handlePreviousMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
     const handleNextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
-    const displayMonth = currentDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }).replace(/^\w/, c => c.toUpperCase());
+    const displayMonth = currentDate ? currentDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }).replace(/^\w/, c => c.toUpperCase()) : '';
 
     return (
         <Box>
@@ -132,39 +214,81 @@ export default function Dashboard({ onEditGasto, dadosCompartilhados, setCurrent
                 <Typography variant="h4" sx={{ mx: 2, width: '250px', textAlign: 'center' }}>{displayMonth}</Typography>
                 <IconButton onClick={handleNextMonth}><ArrowForwardIosIcon /></IconButton>
             </Box>
+            
             <Grid container spacing={3} sx={{ mb: 3 }}>
-                <Grid xs={12} sm={4}><KpiCard title="Gasto Total do Mês" value={formatCurrency(gastoTotal)} icon={<AttachMoneyIcon />} color="error.main" /></Grid>
-                <Grid xs={12} sm={4}><KpiCard title="Nº de Transações" value={numTransacoes} icon={<ReceiptLongIcon />} color="info.main" /></Grid>
-                <Grid xs={12} sm={4}><KpiCard title="Gasto Médio" value={formatCurrency(gastoMedio)} icon={<FunctionsIcon />} color="warning.main" /></Grid>
+                <Grid item xs={12} md={4}><KpiCard title="Gasto Total do Mês" value={formatCurrency(gastoTotal)} icon={<AttachMoneyIcon />} color="primary.main" /></Grid>
+                <Grid item xs={12} md={4}>
+                    <KpiCard 
+                        title="Total em Cartões no Mês" 
+                        value={formatCurrency(totalCartoesFiltrado)} 
+                        icon={<CreditCardIcon />} 
+                        color="error.main"
+                        title2={proximaFaturaInfo?.label}
+                        value2={proximaFaturaInfo?.total}
+                    >
+                        <FormControl size="small" sx={{ minWidth: 120 }}>
+                            <Select value={kpiCardFilter} onChange={(e) => setKpiCardFilter(e.target.value)} sx={{ fontSize: '0.8rem' }}>
+                                <MenuItem value="todos">Todos</MenuItem>
+                                {(cartoes || []).map(c => <MenuItem key={c.id} value={c.id}>{c.nome} {!c.is_active && '(Inativo)'}</MenuItem>)}
+                            </Select>
+                        </FormControl>
+                    </KpiCard>
+                </Grid>
+                <Grid item xs={12} md={4}><KpiCard title="Total em Débito no Mês" value={formatCurrency(totalDebito)} icon={<PaymentsIcon />} color="success.main" /></Grid>
             </Grid>
+
             <Paper sx={{ p: 2, mb: 3 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                    <Typography variant="h6">Análise de Gastos</Typography>
-                    <FormControl sx={{ minWidth: 200 }} size="small">
-                        <InputLabel>Filtrar por Responsável</InputLabel>
-                        <Select value={responsavelFiltro} label="Filtrar por Responsável" onChange={(e) => setResponsavelFiltro(e.target.value)}>
-                            {responsaveisUnicos.map(nome => (<MenuItem key={nome} value={nome}>{nome}</MenuItem>))}
-                        </Select>
-                    </FormControl>
-                </Box>
+                <Grid container spacing={2} alignItems="center" sx={{ mb: 2 }}>
+                    <Grid item><Typography variant="h6">Análise de Gastos</Typography></Grid>
+                    <Grid item>
+                        <FormControl size="small" sx={{ minWidth: 180 }}>
+                            <InputLabel>Fonte</InputLabel>
+                            <Select value={chartSourceFilter} label="Fonte" onChange={(e) => setChartSourceFilter(e.target.value)}>
+                                <MenuItem value="todos">Visão Geral</MenuItem>
+                                <MenuItem value="cartao">Apenas Cartões</MenuItem>
+                                <MenuItem value="debito">Apenas Débito</MenuItem>
+                            </Select>
+                        </FormControl>
+                    </Grid>
+                    {chartSourceFilter === 'cartao' && (
+                        <Grid item>
+                            <FormControl size="small" sx={{ minWidth: 180 }}>
+                                <InputLabel>Cartão</InputLabel>
+                                <Select value={chartCardFilter} label="Cartão" onChange={(e) => setChartCardFilter(e.target.value)}>
+                                    <MenuItem value="todos">Todos os Cartões</MenuItem>
+                                    {(cartoes || []).map(c => <MenuItem key={c.id} value={c.id}>{c.nome} {!c.is_active && '(Inativo)'}</MenuItem>)}
+                                </Select>
+                            </FormControl>
+                        </Grid>
+                    )}
+                    <Grid item>
+                        <FormControl size="small" sx={{ minWidth: 180 }}>
+                            <InputLabel>Responsável</InputLabel>
+                            <Select value={responsavelFiltro} label="Responsável" onChange={(e) => setResponsavelFiltro(e.target.value)}>
+                                {responsaveisUnicos.map(nome => (<MenuItem key={nome} value={nome}>{nome}</MenuItem>))}
+                            </Select>
+                        </FormControl>
+                    </Grid>
+                </Grid>
                 <ExpenseChart data={dadosGrafico} />
             </Paper>
+            
             <Grid container spacing={3}>
-                <Grid lg={4} xs={12}>
+                <Grid item lg={4} xs={12}>
                     <Forms
                         novaCategoria={novaCategoria} setNovaCategoria={setNovaCategoria} handleCategoriaSubmit={handleCategoriaSubmit}
-                        descricao={descricao} setDescricao={setDescricao} valor={valor} setValor={setValor}
-                        responsavel={responsavel} setResponsavel={setResponsavel} categoriaId={categoriaId} setCategoriaId={setCategoriaId}
-                        categorias={categorias} handleGastoSubmit={handleGastoSubmit}
+                        categorias={categorias} handleCategoriaDelete={handleCategoriaDelete}
+                        nome={nome} setNome={setNome} valor={valor} setValor={setValor}
+                        responsavel={responsavel} setResponsavel={setResponsavel} anotacao={anotacao} setAnotacao={setAnotacao}
+                        categoriaId={categoriaId} setCategoriaId={setCategoriaId} handleGastoSubmit={handleGastoSubmit}
                         dataGasto={dataGasto} setDataGasto={setDataGasto}
                         cartaoId={cartaoId} setCartaoId={setCartaoId} cartoes={cartoes}
                         isParcelado={isParcelado} setIsParcelado={setIsParcelado}
                         numParcelas={numParcelas} setNumParcelas={setNumParcelas}
                         valorParcela={valorParcela} setValorParcela={setValorParcela}
-                        handleCategoriaDelete={handleCategoriaDelete}
                     />
                 </Grid>
-                <Grid lg={8} xs={12}>
+                <Grid item lg={8} xs={12}>
                     <Paper>
                         <Tabs value={tabValue} onChange={(e, newValue) => setTabValue(newValue)}>
                             <Tab label="Histórico do Mês" />
@@ -172,7 +296,7 @@ export default function Dashboard({ onEditGasto, dadosCompartilhados, setCurrent
                         </Tabs>
                         <Box sx={{p: 2}}>
                             {tabValue === 0 && <ExpenseTable gastos={gastosFiltrados} onEditGasto={onEditGasto} />}
-                            {tabValue === 1 && <InstallmentTable gastos={comprasParceladas} />}
+                            {tabValue === 1 && <InstallmentTable gastos={parcelasAtivasNoMes} />}
                         </Box>
                     </Paper>
                 </Grid>

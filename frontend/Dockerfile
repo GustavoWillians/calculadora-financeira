@@ -18,4 +18,4 @@ EXPOSE 5173
 
 # Comando para iniciar o servidor de desenvolvimento
 # A flag --host já está no package.json, mas podemos garantir aqui também
-CMD ["npm", "run", "dev"]
+CMD ["npm", "run", "start"]

@@ -4,6 +4,7 @@ import { formatCurrency } from '../utils/formatters';
 import { addMonths, format } from 'date-fns';
 
 export default function InstallmentTable({ gastos }) {
+  
   return (
     <Paper sx={{ p: 2, boxShadow: 'none' }}>
       <Typography variant="h6" color="primary" gutterBottom>
@@ -24,14 +25,15 @@ export default function InstallmentTable({ gastos }) {
           <TableBody>
             {(gastos || []).map((gasto) => {
               const dataInicio = new Date(gasto.data);
-              // Calcula a data da última parcela a partir da data da COMPRA original
               const dataFim = addMonths(dataInicio, gasto.numero_parcelas - 1);
 
               return (
-                <TableRow hover key={gasto.id}>
+                <TableRow hover key={`${gasto.id}-${gasto.parcela_atual || 1}`}>
                   <TableCell>{gasto.descricao}</TableCell>
-                  <TableCell>{gasto.cartao?.nome || 'N/A'}</TableCell>
-                  {/* Exibindo a parcela atual */}
+                  {/* LÓGICA ADICIONADA para mostrar o status do cartão */}
+                  <TableCell>
+                    {gasto.cartao ? `${gasto.cartao.nome}${gasto.cartao.is_active === false ? ' (Inativo)' : ''}` : 'Débito'}
+                  </TableCell>
                   <TableCell align="center">
                     <Chip label={`${gasto.parcela_atual}/${gasto.numero_parcelas}`} size="small" variant="outlined" />
                   </TableCell>

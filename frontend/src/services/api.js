@@ -11,7 +11,6 @@ export const deleteCategoria = (id) => api.delete(`/categorias/${id}`);
 
 // --- Funções de Gasto ---
 export const getGastos = (params) => api.get('/gastos/', { params });
-export const getGastosParcelados = (params) => api.get('/gastos/parcelados', { params });
 export const createGasto = (gasto) => api.post('/gastos/', gasto);
 export const updateGasto = (id, gastoData) => api.put(`/gastos/${id}`, gastoData);
 export const deleteGasto = (id) => api.delete(`/gastos/${id}`);

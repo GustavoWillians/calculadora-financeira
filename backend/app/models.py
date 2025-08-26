@@ -50,15 +50,15 @@ class Gasto(Base):
     __tablename__ = "gastos"
 
     id = Column(Integer, primary_key=True, index=True)
-    descricao = Column(String, index=True)
-    valor = Column(Float, nullable=False) # Este será o VALOR TOTAL da compra
+    nome = Column(String, index=True) # <-- RENOMEADO
+    anotacao = Column(String, nullable=True) # <-- NOVO CAMPO
+    valor = Column(Float, nullable=False)
     responsavel = Column(String, default="Eu", index=True)
     data = Column(DateTime, nullable=False)
     
-    # NOVOS CAMPOS PARA PARCELAMENTO
     is_parcelado = Column(Boolean, default=False)
     numero_parcelas = Column(Integer, default=1)
-    valor_parcela = Column(Float, nullable=True) # Valor de cada parcela
+    valor_parcela = Column(Float, nullable=True)
     
     categoria_id = Column(Integer, ForeignKey("categorias.id"))
     categoria = relationship("Categoria", back_populates="gastos")

@@ -35,19 +35,20 @@ class CartaoCredito(CartaoCreditoBase):
 
 # Schema para receber dados ao criar um novo gasto
 class GastoCreate(BaseModel):
-    descricao: str
-    valor: float # O valor aqui é o total
+    nome: str # <-- RENOMEADO
+    anotacao: Optional[str] = None # <-- NOVO CAMPO
+    valor: float
     responsavel: Optional[str] = "Eu"
     categoria_id: int
     data: date
     cartao_id: Optional[int] = None
-    # NOVOS CAMPOS OPCIONAIS
     is_parcelado: Optional[bool] = False
     numero_parcelas: Optional[int] = 1
     valor_parcela: Optional[float] = None
 
 class GastoUpdate(BaseModel):
-    descricao: Optional[str] = None
+    nome: Optional[str] = None # <-- RENOMEADO
+    anotacao: Optional[str] = None # <-- NOVO CAMPO
     valor: Optional[float] = None
     responsavel: Optional[str] = None
     categoria_id: Optional[int] = None
@@ -57,16 +58,15 @@ class GastoUpdate(BaseModel):
     numero_parcelas: Optional[int] = None
     valor_parcela: Optional[float] = None
 
-# Schema para exibir um gasto na resposta da API (inclui os dados da categoria)
 class Gasto(BaseModel):
     id: int
-    descricao: str
+    nome: str # <-- RENOMEADO
+    anotacao: Optional[str] = None # <-- NOVO CAMPO
     valor: float
     responsavel: str
     data: datetime
     categoria: Categoria
     cartao: Optional[CartaoCredito] = None
-    # NOVOS CAMPOS NA RESPOSTA
     is_parcelado: bool
     numero_parcelas: int
     valor_parcela: Optional[float] = None
@@ -110,3 +110,9 @@ class Meta(MetaBase):
 
     class Config:
         from_attributes = True
+
+# NOVO SCHEMA PARA A RESPOSTA DA FATURA
+class Fatura(BaseModel):
+    gastos: List[Gasto]
+    periodo_inicio: date
+    periodo_fim: date

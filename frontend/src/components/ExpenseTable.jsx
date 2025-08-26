@@ -2,6 +2,7 @@ import React from 'react';
 import { Paper, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip, IconButton } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import { formatCurrency } from '../utils/formatters';
+import { format } from 'date-fns';
 
 export default function ExpenseTable({ gastos, onEditGasto }) {
   return (
@@ -13,9 +14,9 @@ export default function ExpenseTable({ gastos, onEditGasto }) {
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell>Descrição</TableCell>
+              <TableCell>Nome</TableCell> {/* <-- RENOMEADO */}
               <TableCell>Categoria</TableCell>
-              <TableCell>Tipo de Pagamento</TableCell>
+              <TableCell>Pagamento</TableCell>
               <TableCell align="center">Parcela</TableCell>
               <TableCell align="right">Valor</TableCell>
               <TableCell>Responsável</TableCell>
@@ -26,11 +27,10 @@ export default function ExpenseTable({ gastos, onEditGasto }) {
           <TableBody>
             {(gastos || []).map((gasto) => (
               <TableRow hover key={`${gasto.id}-${gasto.parcela_atual || 1}`}>
-                <TableCell>{gasto.descricao}</TableCell>
+                <TableCell>{gasto.nome}</TableCell> {/* <-- USANDO O CAMPO 'nome' */}
                 <TableCell>{gasto.categoria?.nome || 'Sem Categoria'}</TableCell>
-                {/* LÓGICA PARA EXIBIR O PAGAMENTO */}
                 <TableCell>
-                  {gasto.cartao ? gasto.cartao.nome : 'Débito'}
+                  {gasto.cartao ? `${gasto.cartao.nome}${gasto.cartao.is_active === false ? ' (Inativo)' : ''}` : 'Débito'}
                 </TableCell>
                 <TableCell align="center">
                   {gasto.is_parcelado ? (

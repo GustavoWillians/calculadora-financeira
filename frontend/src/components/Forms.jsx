@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { 
   Paper, Typography, TextField, Button, Select, MenuItem, InputLabel, 
-  FormControl, Grid, Switch, FormControlLabel, Box, IconButton 
+  FormControl, Grid, Switch, FormControlLabel, Box, IconButton, Divider 
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 
@@ -10,7 +10,8 @@ export default function Forms({
   novaCategoria, setNovaCategoria, handleCategoriaSubmit,
   categorias, handleCategoriaDelete,
   // Props para Gasto
-  descricao, setDescricao, valor, setValor, responsavel, setResponsavel,
+  nome, setNome, valor, setValor, responsavel, setResponsavel,
+  anotacao, setAnotacao,
   categoriaId, setCategoriaId, handleGastoSubmit,
   dataGasto, setDataGasto,
   cartaoId, setCartaoId, cartoes,
@@ -35,11 +36,20 @@ export default function Forms({
     }
   }, [cartaoId, setIsParcelado]);
 
+  const handleCartaoChange = (event) => {
+    const newCartaoId = event.target.value;
+    setCartaoId(newCartaoId);
+    if (newCartaoId === 'debito') {
+      setIsParcelado(false);
+      setNumParcelas(1);
+      setValorParcela('');
+    }
+  };
+
   return (
     <Grid container spacing={3}>
       <Grid item xs={12}>
-        {/* SEÇÃO DE ADICIONAR CATEGORIA DE VOLTA AO SIMPLES */}
-        <Paper sx={{ p: 2 }}>
+        <Paper sx={{ p: 2, mb: 3 }}>
           <Typography variant="h6" gutterBottom>Adicionar Nova Categoria</Typography>
           <form onSubmit={handleCategoriaSubmit}>
             <TextField 
@@ -58,11 +68,12 @@ export default function Forms({
         <Paper sx={{ p: 2 }}>
           <Typography variant="h6" gutterBottom>Registrar Gasto</Typography>
           <form onSubmit={handleGastoSubmit}>
-            <TextField label="Descrição" variant="outlined" fullWidth value={descricao} onChange={(e) => setDescricao(e.target.value)} sx={{ mb: 2 }} />
+            <TextField label="Nome" variant="outlined" fullWidth value={nome} onChange={(e) => setNome(e.target.value)} sx={{ mb: 2 }} />
+            <TextField label="Anotação" variant="outlined" fullWidth multiline rows={2} value={anotacao} onChange={(e) => setAnotacao(e.target.value)} sx={{ mb: 2 }} />
+            
             <TextField label="Valor Total" type="number" variant="outlined" fullWidth value={valor} onChange={(e) => setValor(e.target.value)} sx={{ mb: 2 }} disabled={isParcelado} />
             <TextField label="Responsável" variant="outlined" fullWidth value={responsavel} onChange={(e) => setResponsavel(e.target.value)} placeholder="Eu" sx={{ mb: 2 }} />
             
-            {/* --- AQUI ESTÁ A MUDANÇA PRINCIPAL --- */}
             <FormControl fullWidth sx={{ mb: 2 }}>
               <InputLabel>Categoria</InputLabel>
               <Select value={categoriaId} label="Categoria" onChange={(e) => setCategoriaId(e.target.value)}>
@@ -74,7 +85,7 @@ export default function Forms({
                         edge="end" 
                         aria-label="delete" 
                         onClick={(e) => {
-                          e.stopPropagation(); // Impede que o menu feche ao clicar
+                          e.stopPropagation();
                           handleCategoriaDelete(cat.id);
                         }}
                       >
@@ -88,9 +99,9 @@ export default function Forms({
 
             <FormControl fullWidth sx={{ mb: 2 }}>
               <InputLabel>Pagamento</InputLabel>
-              <Select value={cartaoId} label="Pagamento" onChange={(e) => setCartaoId(e.target.value)}>
+              <Select value={cartaoId} label="Pagamento" onChange={handleCartaoChange}>
                 <MenuItem value="debito">Débito / Dinheiro</MenuItem>
-                {(cartoes || []).map((cartao) => (<MenuItem key={cartao.id} value={cartao.id}>{cartao.nome}</MenuItem>))}
+                {(cartoes || []).map((cartao) => (<MenuItem key={cartao.id} value={cartao.id}>{cartao.nome} {!cartao.is_active && '(Inativo)'}</MenuItem>))}
               </Select>
             </FormControl>
             {cartaoId !== 'debito' && (
