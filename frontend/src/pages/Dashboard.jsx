@@ -15,7 +15,7 @@ import ExpenseChart from '../components/ExpenseChart';
 import ExpenseTable from '../components/ExpenseTable';
 import InstallmentTable from '../components/InstallmentTable';
 import Forms from '../components/Forms';
-import { getCategorias, createCategoria, deleteCategoria, getGastos, createGasto, getCartoes, updateGasto, deleteGasto } from '../services/api';
+import { getCategorias, createCategoria, deleteCategoria, getGastos, createGasto, getCartoes, updateGasto, deleteGasto, getFatura } from '../services/api';
 import { formatCurrency } from '../utils/formatters';
 
 const getTodayString = () => new Date().toISOString().split('T')[0];
@@ -28,7 +28,7 @@ const processarDadosGrafico = (gastos) => {
             acc[nomeCategoria] = { total: 0, gastos: [] };
         }
         acc[nomeCategoria].total += gasto.valor;
-        acc[nomeCategoria].gastos.push({ descricao: gasto.nome, valor: gasto.valor }); // <-- USANDO O CAMPO 'nome'
+        acc[nomeCategoria].gastos.push({ descricao: gasto.nome, valor: gasto.valor });
         return acc;
     }, {});
     return Object.keys(gastosPorCategoria).map(nome => ({
@@ -39,11 +39,13 @@ const processarDadosGrafico = (gastos) => {
 };
 
 export default function Dashboard({ onEditGasto, dadosCompartilhados, setCurrentDate, fetchData }) {
-    const { gastosRecentes, gastosDoMes, comprasParceladas, categorias, cartoes, currentDate } = dadosCompartilhados;
+    const { gastosRecentes, gastosDoMes, categorias, cartoes: allCards, currentDate } = dadosCompartilhados;
     const { enqueueSnackbar } = useSnackbar();
 
-    const [nome, setNome] = useState(''); // <-- RENOMEADO
-    const [anotacao, setAnotacao] = useState(''); // <-- NOVO CAMPO
+    const activeCards = useMemo(() => (allCards || []).filter(c => c.is_active), [allCards]);
+
+    const [descricao, setDescricao] = useState('');
+    const [anotacao, setAnotacao] = useState('');
     const [valor, setValor] = useState('');
     const [responsavel, setResponsavel] = useState('');
     const [categoriaId, setCategoriaId] = useState('');
@@ -59,6 +61,33 @@ export default function Dashboard({ onEditGasto, dadosCompartilhados, setCurrent
     const [chartCardFilter, setChartCardFilter] = useState('todos');
     const [responsavelFiltro, setResponsavelFiltro] = useState('Todos');
     
+    const [previaFatura, setPreviaFatura] = useState(null);
+
+    useEffect(() => {
+        const fetchPreviaFatura = async () => {
+            if (kpiCardFilter !== 'todos' && currentDate) {
+                const ano = currentDate.getFullYear();
+                const mes = currentDate.getMonth() + 1;
+                try {
+                    const res = await getFatura(kpiCardFilter, { ano, mes });
+                    const totalFatura = res.data.gastos.reduce((sum, g) => sum + g.valor, 0);
+                    const dataFechamento = new Date(res.data.periodo_fim + 'T00:00:00');
+                    setPreviaFatura({
+                        total: formatCurrency(totalFatura),
+                        label: `Total p/ fatura (fecha em ${format(dataFechamento, 'dd/MM')})`
+                    });
+                } catch (error) {
+                    console.error("Erro ao buscar prévia da fatura:", error);
+                    setPreviaFatura(null);
+                }
+            } else {
+                setPreviaFatura(null);
+            }
+        };
+
+        fetchPreviaFatura();
+    }, [kpiCardFilter, currentDate]);
+
     const responsaveisUnicos = useMemo(() => {
         const nomes = new Set((gastosDoMes || []).map(g => g.responsavel));
         return ['Todos', ...Array.from(nomes)];
@@ -113,50 +142,18 @@ export default function Dashboard({ onEditGasto, dadosCompartilhados, setCurrent
     const numTransacoes = useMemo(() => gastosFiltrados.length, [gastosFiltrados]);
     const gastoMedio = useMemo(() => numTransacoes > 0 ? (gastoTotal / numTransacoes) : 0, [gastoTotal, numTransacoes]);
 
-    const proximaFaturaInfo = useMemo(() => {
-        if (kpiCardFilter === 'todos' || !cartoes.length || !gastosRecentes) {
-            return null;
-        }
-        const cartao = cartoes.find(c => c.id === kpiCardFilter);
-        if (!cartao) return null;
-
-        const dataReferencia = currentDate; 
-        let dataFechamento = new Date(dataReferencia.getFullYear(), dataReferencia.getMonth(), cartao.dia_fechamento);
-        if (dataReferencia.getDate() > cartao.dia_fechamento) {
-            dataFechamento = addMonths(dataFechamento, 1);
-        }
-        
-        const dataFechamentoAnterior = subMonths(dataFechamento, 1);
-        const inicioPeriodo = new Date(dataFechamentoAnterior.getFullYear(), dataFechamentoAnterior.getMonth(), dataFechamentoAnterior.getDate() + 1);
-        const fimPeriodo = dataFechamento;
-
-        const gastosDaFatura = gastosRecentes.filter(g => {
-            if (g.cartao?.id !== cartao.id) return false;
-            const dataGasto = new Date(g.data);
-            return dataGasto >= startOfDay(inicioPeriodo) && dataGasto <= endOfDay(fimPeriodo);
-        });
-
-        const total = gastosDaFatura.reduce((sum, g) => {
-             const valorASomar = g.is_parcelado ? (g.valor_parcela || 0) : g.valor;
-            return sum + valorASomar;
-        }, 0);
-
-        return {
-            total: formatCurrency(total),
-            label: `Total p/ fatura (fecha em ${format(dataFechamento, 'dd/MM')})`
-        };
-    }, [kpiCardFilter, cartoes, gastosRecentes, currentDate]);
-
     const handleGastoSubmit = async (e) => {
         e.preventDefault();
-        if (!nome || !valor || !categoriaId || !dataGasto) { // <-- USANDO 'nome'
+        if (!descricao || !valor || !categoriaId || !dataGasto) {
             return enqueueSnackbar("Por favor, preencha todos os campos obrigatórios.", { variant: 'warning' });
         }
         const novoGasto = { 
-            nome, // <-- USANDO 'nome'
-            anotacao, // <-- NOVO CAMPO
-            valor: parseFloat(valor), responsavel: responsavel || 'Eu', 
-            categoria_id: parseInt(categoriaId), data: dataGasto,
+            nome: descricao,
+            anotacao,
+            valor: parseFloat(valor),
+            responsavel: responsavel || 'Eu', 
+            categoria_id: parseInt(categoriaId),
+            data: dataGasto,
             cartao_id: cartaoId === 'debito' ? null : parseInt(cartaoId),
             is_parcelado: isParcelado,
             numero_parcelas: isParcelado ? parseInt(numParcelas, 10) : 1,
@@ -164,7 +161,7 @@ export default function Dashboard({ onEditGasto, dadosCompartilhados, setCurrent
         };
         try {
             await createGasto(novoGasto);
-            setNome(''); setAnotacao(''); setValor(''); setResponsavel(''); setDataGasto(getTodayString()); 
+            setDescricao(''); setAnotacao(''); setValor(''); setResponsavel(''); setDataGasto(getTodayString()); 
             setCartaoId('debito'); setIsParcelado(false); setNumParcelas(2); setValorParcela('');
             fetchData();
             enqueueSnackbar('Gasto registrado com sucesso!', { variant: 'success' });
@@ -178,7 +175,7 @@ export default function Dashboard({ onEditGasto, dadosCompartilhados, setCurrent
         e.preventDefault();
         if (!novaCategoria) return enqueueSnackbar("Digite o nome da categoria.", { variant: 'warning' });
         try {
-            await createCategoria(novaCategoria);
+            await createCategoria({ nome: novaCategoria });
             setNovaCategoria('');
             fetchData();
             enqueueSnackbar('Categoria criada com sucesso!', { variant: 'success' });
@@ -216,25 +213,29 @@ export default function Dashboard({ onEditGasto, dadosCompartilhados, setCurrent
             </Box>
             
             <Grid container spacing={3} sx={{ mb: 3 }}>
-                <Grid item xs={12} md={4}><KpiCard title="Gasto Total do Mês" value={formatCurrency(gastoTotal)} icon={<AttachMoneyIcon />} color="primary.main" /></Grid>
+                <Grid item xs={12} md={4}>
+                    <KpiCard title="Gasto Total do Mês" value={formatCurrency(gastoTotal)} icon={<AttachMoneyIcon />} color="primary.main" />
+                </Grid>
                 <Grid item xs={12} md={4}>
                     <KpiCard 
                         title="Total em Cartões no Mês" 
                         value={formatCurrency(totalCartoesFiltrado)} 
                         icon={<CreditCardIcon />} 
                         color="error.main"
-                        title2={proximaFaturaInfo?.label}
-                        value2={proximaFaturaInfo?.total}
+                        title2={previaFatura?.label}
+                        value2={previaFatura?.total}
                     >
                         <FormControl size="small" sx={{ minWidth: 120 }}>
                             <Select value={kpiCardFilter} onChange={(e) => setKpiCardFilter(e.target.value)} sx={{ fontSize: '0.8rem' }}>
                                 <MenuItem value="todos">Todos</MenuItem>
-                                {(cartoes || []).map(c => <MenuItem key={c.id} value={c.id}>{c.nome} {!c.is_active && '(Inativo)'}</MenuItem>)}
+                                {(allCards || []).map(c => <MenuItem key={c.id} value={c.id}>{c.nome} {!c.is_active && '(Inativo)'}</MenuItem>)}
                             </Select>
                         </FormControl>
                     </KpiCard>
                 </Grid>
-                <Grid item xs={12} md={4}><KpiCard title="Total em Débito no Mês" value={formatCurrency(totalDebito)} icon={<PaymentsIcon />} color="success.main" /></Grid>
+                <Grid item xs={12} md={4}>
+                    <KpiCard title="Total em Débito no Mês" value={formatCurrency(totalDebito)} icon={<PaymentsIcon />} color="success.main" />
+                </Grid>
             </Grid>
 
             <Paper sx={{ p: 2, mb: 3 }}>
@@ -256,7 +257,7 @@ export default function Dashboard({ onEditGasto, dadosCompartilhados, setCurrent
                                 <InputLabel>Cartão</InputLabel>
                                 <Select value={chartCardFilter} label="Cartão" onChange={(e) => setChartCardFilter(e.target.value)}>
                                     <MenuItem value="todos">Todos os Cartões</MenuItem>
-                                    {(cartoes || []).map(c => <MenuItem key={c.id} value={c.id}>{c.nome} {!c.is_active && '(Inativo)'}</MenuItem>)}
+                                    {(allCards || []).map(c => <MenuItem key={c.id} value={c.id}>{c.nome} {!c.is_active && '(Inativo)'}</MenuItem>)}
                                 </Select>
                             </FormControl>
                         </Grid>
@@ -278,11 +279,13 @@ export default function Dashboard({ onEditGasto, dadosCompartilhados, setCurrent
                     <Forms
                         novaCategoria={novaCategoria} setNovaCategoria={setNovaCategoria} handleCategoriaSubmit={handleCategoriaSubmit}
                         categorias={categorias} handleCategoriaDelete={handleCategoriaDelete}
-                        nome={nome} setNome={setNome} valor={valor} setValor={setValor}
-                        responsavel={responsavel} setResponsavel={setResponsavel} anotacao={anotacao} setAnotacao={setAnotacao}
-                        categoriaId={categoriaId} setCategoriaId={setCategoriaId} handleGastoSubmit={handleGastoSubmit}
+                        nome={descricao} setNome={setDescricao}
+                        anotacao={anotacao} setAnotacao={setAnotacao}
+                        valor={valor} setValor={setValor}
+                        responsavel={responsavel} setResponsavel={setResponsavel} categoriaId={categoriaId} setCategoriaId={setCategoriaId}
+                        handleGastoSubmit={handleGastoSubmit}
                         dataGasto={dataGasto} setDataGasto={setDataGasto}
-                        cartaoId={cartaoId} setCartaoId={setCartaoId} cartoes={cartoes}
+                        cartaoId={cartaoId} setCartaoId={setCartaoId} cartoes={activeCards}
                         isParcelado={isParcelado} setIsParcelado={setIsParcelado}
                         numParcelas={numParcelas} setNumParcelas={setNumParcelas}
                         valorParcela={valorParcela} setValorParcela={setValorParcela}

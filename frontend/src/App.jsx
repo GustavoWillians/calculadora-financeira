@@ -31,18 +31,31 @@ export default function App() {
       const ano = currentDate.getFullYear();
       const mes = currentDate.getMonth() + 1;
 
-      const [catRes, carRes, gasRes, metRes] = await Promise.all([
+      // Busca os dados base que não dependem de outros
+      const [catRes, carRes, metRes] = await Promise.all([
         getCategorias(),
         getCartoes({ include_inactive: true }),
-        getGastos({ ano, mes }),
-        getMetas()
+        getMetas(),
       ]);
 
+      const todosOsCartoes = carRes.data;
+      const cartoesAtivos = todosOsCartoes.filter(c => c.is_active);
       setCategorias(catRes.data);
-      setAllCards(carRes.data);
-      setActiveCards(carRes.data.filter(c => c.is_active));
-      setGastosDoMes(gasRes.data);
+      setAllCards(todosOsCartoes);
+      setActiveCards(cartoesAtivos);
       setMetas(metRes.data);
+
+      // --- LÓGICA DE BUSCA UNIFICADA ---
+      const debitosPromise = getGastos({ ano, mes, tipo_pagamento: 'debito' });
+      const faturasPromises = todosOsCartoes.map(cartao => getFatura(cartao.id, { ano, mes }));
+      
+      const [debitosRes, ...faturasRes] = await Promise.all([debitosPromise, ...faturasPromises]);
+      
+      const gastosDeFaturas = faturasRes.flatMap(res => res.data.gastos);
+      const gastosConsolidados = [...debitosRes.data, ...gastosDeFaturas];
+      gastosConsolidados.sort((a, b) => new Date(b.data) - new Date(a.data));
+      
+      setGastosDoMes(gastosConsolidados);
 
     } catch (error) {
       console.error("Erro ao buscar dados:", error);
@@ -77,7 +90,7 @@ export default function App() {
   };
 
   const handleDeleteGasto = async (gastoId) => {
-    if (window.confirm("Tem certeza que deseja excluir este gasto? Esta ação não pode ser desfeita.")) {
+    if (window.confirm("Tem certeza que deseja excluir este gasto?")) {
       try {
         await deleteGasto(gastoId);
         handleCloseEditModal();
@@ -105,7 +118,7 @@ export default function App() {
                 dadosCompartilhados={{
                   gastosDoMes,
                   categorias,
-                  cartoes: allCards, // <-- AGORA PASSA TODOS OS CARTÕES
+                  cartoes: allCards,
                   currentDate
                 }}
                 setCurrentDate={setCurrentDate}
@@ -121,8 +134,7 @@ export default function App() {
                 onEditGasto={handleOpenEditModal}
                 allCards={allCards}
                 fetchData={fetchData}
-                currentDate={currentDate}
-                setCurrentDate={setCurrentDate}
+                isEditModalOpen={isEditModalOpen}
               />
             }
           />
@@ -137,7 +149,7 @@ export default function App() {
           onSave={handleSaveGasto}
           onDelete={handleDeleteGasto}
           categorias={categorias}
-          cartoes={activeCards} // O modal de edição só precisa dos ativos
+          cartoes={activeCards}
         />
       )}
     </Box>

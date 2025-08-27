@@ -1,19 +1,19 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { BrowserRouter } from 'react-router-dom';
+import { HashRouter } from 'react-router-dom'; // <-- MUDANÇA AQUI
 import { SnackbarProvider } from 'notistack';
 import App from './App.jsx'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <SnackbarProvider 
-        maxSnack={3} 
-        autoHideDuration={3000} 
+    <HashRouter> {/* <-- MUDANÇA AQUI */}
+      <SnackbarProvider
+        maxSnack={3}
+        autoHideDuration={3000}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
       >
         <App />
       </SnackbarProvider>
-    </BrowserRouter>
+    </HashRouter> {/* <-- MUDANÇA AQUI */}
   </React.StrictMode>,
 )

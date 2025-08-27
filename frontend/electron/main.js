@@ -1,11 +1,31 @@
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
+const { spawn } = require('child_process');
+const waitOn = require('wait-on');
 
-// Verifica se está em modo de desenvolvimento
 const isDev = process.env.IS_DEV === 'true';
+let backendProcess = null;
+
+function startPythonBackend() {
+  const backendPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'backend')
+    : path.join(__dirname, '..', '..', 'backend');
+
+  console.log(`Iniciando backend a partir de: ${backendPath}`);
+
+  const command = 'python';
+  const args = ['-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', '8000'];
+  if (isDev) {
+    args.push('--reload');
+  }
+
+  backendProcess = spawn(command, args, { cwd: backendPath });
+
+  backendProcess.stdout.on('data', (data) => console.log(`[Backend]: ${data}`));
+  backendProcess.stderr.on('data', (data) => console.error(`[Backend ERR]: ${data}`));
+}
 
 function createWindow() {
-  // Cria a janela do navegador.
   const mainWindow = new BrowserWindow({
     width: 1280,
     height: 720,
@@ -14,23 +34,51 @@ function createWindow() {
     },
   });
 
-  // Carrega a URL do app Vite (em desenvolvimento) ou o arquivo HTML (em produção).
+  const url = isDev
+    ? 'http://localhost:5173'
+    : `file://${path.join(__dirname, '..', 'dist', 'index.html')}`;
+
   if (isDev) {
-    mainWindow.loadURL('http://localhost:5173');
-    // Abre as Ferramentas de Desenvolvedor.
-    mainWindow.webContents.openDevTools();
+    waitOn({ resources: [url] }, (err) => {
+      if (err) {
+        console.error('Servidor Vite não iniciou a tempo.', err);
+        app.quit();
+      } else {
+        mainWindow.loadURL(url);
+        mainWindow.webContents.openDevTools();
+      }
+    });
   } else {
-    mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+    // Em produção, aguarda o backend iniciar antes de carregar
+    waitOn({ resources: ['tcp:127.0.0.1:8000'] }, (err) => {
+       if (err) {
+         console.error('Backend não iniciou a tempo.', err);
+         app.quit();
+       } else {
+         mainWindow.loadURL(url);
+       }
+    });
   }
 }
 
 app.whenReady().then(() => {
+  startPythonBackend();
   createWindow();
-  app.on('activate', function () {
+  app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
-app.on('window-all-closed', function () {
-  if (process.platform !== 'darwin') app.quit();
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+
+// Garante que o processo do backend seja encerrado ao fechar o app
+app.on('will-quit', () => {
+  if (backendProcess) {
+    backendProcess.kill();
+    backendProcess = null;
+  }
 });

@@ -10,7 +10,7 @@ import { createCartao, deactivateCartao, reactivateCartao, getFatura } from '../
 import ExpenseTable from '../components/ExpenseTable';
 import { formatCurrency } from '../utils/formatters';
 
-export default function Faturas({ onEditGasto, allCards, fetchData }) {
+export default function Faturas({ onEditGasto, allCards, fetchData, isEditModalOpen }) {
   const { enqueueSnackbar } = useSnackbar();
   
   const [gastosFatura, setGastosFatura] = useState([]);
@@ -25,9 +25,32 @@ export default function Faturas({ onEditGasto, allCards, fetchData }) {
   const activeCards = useMemo(() => (allCards || []).filter(c => c.is_active), [allCards]);
   const inactiveCards = useMemo(() => (allCards || []).filter(c => !c.is_active), [allCards]);
 
+  const fetchFaturaData = async () => {
+    if (!cartaoSelecionadoId) {
+      setGastosFatura([]);
+      setPeriodoFatura(null);
+      return;
+    };
+    
+    const ano = currentDate.getFullYear();
+    const mes = currentDate.getMonth() + 1;
+    
+    try {
+      const res = await getFatura(cartaoSelecionadoId, { ano, mes });
+      setGastosFatura(res.data.gastos);
+      setPeriodoFatura({
+        inicio: res.data.periodo_inicio,
+        fim: res.data.periodo_fim
+      });
+    } catch (error) {
+      console.error("Erro ao buscar fatura:", error);
+      setGastosFatura([]);
+      setPeriodoFatura(null);
+    }
+  };
+
   useEffect(() => {
-    // Tenta selecionar o primeiro cartão ativo, se houver. Senão, o primeiro de todos.
-    if (activeCards.length > 0 && !cartaoSelecionadoId) {
+    if (activeCards.length > 0 && !allCards.find(c => c.id === cartaoSelecionadoId)) {
       setCartaoSelecionadoId(activeCards[0].id);
     } else if (allCards.length > 0 && !cartaoSelecionadoId) {
       setCartaoSelecionadoId(allCards[0].id);
@@ -35,31 +58,13 @@ export default function Faturas({ onEditGasto, allCards, fetchData }) {
   }, [allCards, activeCards, cartaoSelecionadoId]);
 
   useEffect(() => {
-    const fetchFaturaData = async () => {
-      if (!cartaoSelecionadoId) {
-        setGastosFatura([]);
-        setPeriodoFatura(null);
-        return;
-      };
-      
-      const ano = currentDate.getFullYear();
-      const mes = currentDate.getMonth() + 1;
-      
-      try {
-        const res = await getFatura(cartaoSelecionadoId, { ano, mes });
-        setGastosFatura(res.data.gastos);
-        setPeriodoFatura({
-          inicio: res.data.periodo_inicio,
-          fim: res.data.periodo_fim
-        });
-      } catch (error) {
-        console.error("Erro ao buscar fatura:", error);
-        setGastosFatura([]);
-        setPeriodoFatura(null);
-      }
-    };
-    fetchFaturaData();
-  }, [cartaoSelecionadoId, currentDate]);
+    // A LÓGICA DE ATUALIZAÇÃO ESTÁ AQUI
+    // Se o modal não estiver aberto, busca os dados.
+    // Isso faz com que a busca seja refeita quando o modal FECHA.
+    if (!isEditModalOpen) {
+      fetchFaturaData();
+    }
+  }, [cartaoSelecionadoId, currentDate, isEditModalOpen]);
   
   const cartaoSelecionado = useMemo(() => (allCards || []).find(c => c.id === cartaoSelecionadoId), [allCards, cartaoSelecionadoId]);
   
@@ -111,12 +116,11 @@ export default function Faturas({ onEditGasto, allCards, fetchData }) {
   const handlePreviousMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
   const handleNextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
   const displayMonth = currentDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }).replace(/^\w/, c => c.toUpperCase());
+  
   const totalFatura = useMemo(() => (gastosFiltrados || []).reduce((sum, g) => sum + g.valor, 0), [gastosFiltrados]);
   
-  // Função auxiliar para corrigir o fuso horário apenas para exibição
   const formatLocalDate = (dateString) => {
     if (!dateString) return '';
-    // Adiciona o tempo para evitar que o JS converta para o dia anterior
     const date = new Date(`${dateString}T00:00:00`);
     return format(date, 'dd/MM/yyyy');
   }
@@ -134,7 +138,6 @@ export default function Faturas({ onEditGasto, allCards, fetchData }) {
             <FormControl fullWidth>
               <InputLabel>Cartão</InputLabel>
               <Select value={cartaoSelecionadoId || ''} label="Cartão" onChange={(e) => setCartaoSelecionadoId(e.target.value)}>
-                {/* AQUI ESTÁ A MUDANÇA: Mapeando TODOS os cartões */}
                 {(allCards || []).map((c) => (
                   <MenuItem key={c.id} value={c.id}>
                     {c.nome} {!c.is_active && '(Inativo)'}
@@ -160,14 +163,11 @@ export default function Faturas({ onEditGasto, allCards, fetchData }) {
                 </FormControl>
             </Grid>
             <Grid item xs={12} md={8}>
-                {cartaoSelecionado && (
+                {cartaoSelecionado && periodoFatura && (
                     <Box>
-                        {/* CAMPO DE VOLTA, USANDO OS DADOS VINDOS DA API */}
-                        {periodoFatura && (
-                          <Typography variant="body2" color="text.secondary">
-                              Período de Compras: <strong>{formatLocalDate(periodoFatura.inicio)} - {formatLocalDate(periodoFatura.fim)}</strong>
-                          </Typography>
-                        )}
+                        <Typography variant="body2" color="text.secondary">
+                            Período de Compras: <strong>{formatLocalDate(periodoFatura.inicio)} - {formatLocalDate(periodoFatura.fim)}</strong>
+                        </Typography>
                         <Typography variant="body1" color="text.secondary">
                             Fechamento da fatura: <strong>Dia {cartaoSelecionado.dia_fechamento}</strong>
                         </Typography>

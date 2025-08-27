@@ -14,7 +14,7 @@ export default function InstallmentTable({ gastos }) {
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell>Descrição</TableCell>
+              <TableCell>Nome</TableCell>
               <TableCell>Cartão</TableCell>
               <TableCell align="center">Parcela</TableCell>
               <TableCell align="right">Valor da Parcela</TableCell>
@@ -29,7 +29,7 @@ export default function InstallmentTable({ gastos }) {
 
               return (
                 <TableRow hover key={`${gasto.id}-${gasto.parcela_atual || 1}`}>
-                  <TableCell>{gasto.descricao}</TableCell>
+                  <TableCell>{gasto.nome}</TableCell>
                   {/* LÓGICA ADICIONADA para mostrar o status do cartão */}
                   <TableCell>
                     {gasto.cartao ? `${gasto.cartao.nome}${gasto.cartao.is_active === false ? ' (Inativo)' : ''}` : 'Débito'}

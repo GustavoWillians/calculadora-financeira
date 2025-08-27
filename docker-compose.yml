@@ -1,20 +1,17 @@
 services:
-  # Serviço do Backend (API)
   backend:
     build: ./backend
     ports:
       - "8000:8000"
     volumes:
       - ./backend/app:/code/app
+      # CORREÇÃO AQUI: Mapeia o diretório inteiro em vez do arquivo
+      - ./backend/data:/code/data
     environment:
-      - DATABASE_URL=postgresql://user:password@db/mydatabase
-    # Esta nova configuração espera o 'db' estar saudável
+      # O caminho para o banco de dados agora está em um subdiretório
+      - DATABASE_URL=sqlite:///./data/app.db
       - CORS_ORIGINS=http://localhost:5173,http://localhost
-    depends_on:
-      db:
-        condition: service_healthy
-
-  # Serviço do Frontend
+    
   frontend:
     build: ./frontend
     ports:
@@ -22,24 +19,3 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
-
-  # Serviço do Banco de Dados
-  db:
-    image: postgres:15-alpine
-    volumes:
-      - postgres_data:/var/lib/postgresql/data/
-    environment:
-      - POSTGRES_USER=user
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=mydatabase
-    ports:
-      - "5432:5432"
-    # Adicionamos o healthcheck aqui
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d mydatabase"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-volumes:
-  postgres_data:

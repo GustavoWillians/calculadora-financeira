@@ -7,18 +7,40 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import Boolean, create_engine, extract
 from sqlalchemy.orm import Session, sessionmaker, joinedload, selectinload
+from contextlib import asynccontextmanager
 
 from . import models, schemas
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@db/mydatabase")
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-models.Base.metadata.create_all(bind=engine)
+# --- NOVA ESTRUTURA DE INICIALIZAÇÃO ---
+# Define variáveis globais que serão inicializadas depois
+engine = None
+SessionLocal = None
 
-app = FastAPI(title="Calculadora Financeira API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global engine, SessionLocal
+    # Este código roda QUANDO O SERVIDOR INICIA
+    
+    # Pega a URL do banco de dados que foi definida pelo run_desktop_app.py
+    DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./app.db") # Mantém um padrão seguro
+    
+    engine = create_engine(
+        DATABASE_URL, connect_args={"check_same_thread": False}
+    )
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    
+    # Cria as tabelas no banco de dados
+    models.Base.metadata.create_all(bind=engine)
+    print("Banco de dados conectado e tabelas criadas.")
+    
+    yield
+    # Este código roda QUANDO O SERVIDOR TERMINA (não usado por nós)
+    print("Servidor finalizado.")
 
-origins_str = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost")
-origins = origins_str.split(",")
+
+app = FastAPI(title="Calculadora Financeira API", lifespan=lifespan)
+
+origins = ["*"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -28,6 +50,8 @@ app.add_middleware(
 )
 
 def get_db():
+    if SessionLocal is None:
+        raise HTTPException(status_code=500, detail="A sessão com o banco de dados não foi inicializada.")
     db = SessionLocal()
     try:
         yield db
@@ -70,15 +94,24 @@ def _get_gastos_por_periodo(db: Session, data_inicio: datetime, data_fim: dateti
     return gastos_totais
 
 def _calcular_periodo_fatura(ano: int, mes: int, dia_fechamento: int):
+    """
+    Calcula o período de compras para uma fatura.
+    Regra: Para a fatura de Agosto (mês 8) com fechamento dia 20,
+    o período é de 20 de Julho a 19 de Agosto.
+    """
+    # 1. Calcula o fim do período (inclusive).
+    # Este é o dia ANTERIOR ao fechamento da fatura do mês atual.
     try:
         fechamento_atual = datetime(ano, mes, dia_fechamento)
     except ValueError:
+        # Lida com dias inválidos (ex: dia 31), pegando o último dia do mês
         fechamento_atual = (datetime(ano, mes, 1) + relativedelta(months=1)) - timedelta(days=1)
     
-    periodo_fim = fechamento_atual
-    
-    fechamento_anterior = periodo_fim - relativedelta(months=1)
-    periodo_inicio = fechamento_anterior + timedelta(days=1)
+    periodo_fim = fechamento_atual - timedelta(days=1)
+
+    # 2. Calcula o início do período (inclusive).
+    # Este é o dia de fechamento do MÊS ANTERIOR.
+    periodo_inicio = fechamento_atual - relativedelta(months=1)
     
     return periodo_inicio, periodo_fim
 
