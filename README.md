@@ -78,7 +78,7 @@ Para compilar o projeto e gerar o instalador para Windows, siga os passos abaixo
     ```
 
 5.  **Gere o executável com PyInstaller:**
-    Na pasta raiz do projeto, execute o comando que você me forneceu:
+    Na pasta raiz do projeto, execute o comando:
     ```bash
     pyinstaller --name "CalculadoraFinanceira" --onefile --add-data "frontend/dist;frontend/dist" --add-data "backend;backend" --hidden-import "uvicorn.lifespan.on" --hidden-import "uvicorn.loops.auto" --hidden-import "uvicorn.protocols.http.auto" run_desktop_app.py
     ```
