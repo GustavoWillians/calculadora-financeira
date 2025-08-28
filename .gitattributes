@@ -1,0 +1,20 @@
+# Arquivo .gitattributes
+
+
+package-lock.json linguist-vendored
+
+
+frontend/dist/* linguist-vendored
+
+frontend/node_modules/* linguist-vendored
+
+venv/* linguist-vendored
+backend/venv/* linguist-vendored
+
+*.spec linguist-vendored
+backend/dist/* linguist-vendored
+backend/build/* linguist-vendored
+dist/* linguist-vendored
+build/* linguist-vendored
+
+*.db linguist-documentation
