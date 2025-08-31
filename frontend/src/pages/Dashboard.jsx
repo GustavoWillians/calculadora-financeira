@@ -175,7 +175,7 @@ export default function Dashboard({ onEditGasto, dadosCompartilhados, setCurrent
         e.preventDefault();
         if (!novaCategoria) return enqueueSnackbar("Digite o nome da categoria.", { variant: 'warning' });
         try {
-            await createCategoria({ nome: novaCategoria });
+            await createCategoria(novaCategoria );
             setNovaCategoria('');
             fetchData();
             enqueueSnackbar('Categoria criada com sucesso!', { variant: 'success' });
