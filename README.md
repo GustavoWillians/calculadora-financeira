@@ -1,86 +1,84 @@
-#  Calculadora Financeira Pessoal - Aplicativo de Desktop
+# Personal Financial Calculator - Desktop Application
 
-## 📝 Sobre o Projeto
+## 📝 About the Project
 
-Este é um aplicativo de desktop completo para controle financeiro pessoal, criado com o objetivo de substituir planilhas complexas e oferecer uma experiência de usuário mais simples e intuitiva. O projeto foi desenvolvido para ajudar a gerenciar despesas diárias, faturas de cartão de crédito e metas financeiras de forma visual e organizada.
+This is a complete desktop application for personal financial management, created to replace complex spreadsheets and offer a simpler and more intuitive user experience. The project was developed to help manage daily expenses, credit card bills, and financial goals in a visual and organized way.
 
-O aplicativo funciona de forma 100% offline e autocontida, com um executável único para Windows.
-
----
-
-## ✨ Funcionalidades Principais
-
-* **Dashboard (Visão Geral):** Uma tela inicial com KPIs (Key Performance Indicators) que resumem o impacto financeiro do mês, incluindo gasto total, total em cartões e total em débito.
-* **Gráficos Interativos:** Análise visual dos gastos por categoria, com filtros por tipo de pagamento (débito/cartão) e por responsável.
-* **Gerenciamento de Faturas:** Uma tela dedicada para visualizar o histórico de faturas de cada cartão de crédito, com cálculo preciso do período de compras baseado no dia de fechamento.
-* **Controle de Parcelas:** Suporte completo para compras parceladas, com as parcelas sendo corretamente alocadas em suas respectivas faturas.
-* **Gerenciamento de Metas:** Crie e acompanhe o progresso de objetivos financeiros, como viagens ou grandes compras.
-* **CRUD Completo:** Funcionalidades para Adicionar, Editar e Excluir gastos, categorias e cartões, sempre mantendo a integridade do histórico financeiro (soft delete).
+The application works 100% offline and is self-contained, with a single executable for Windows.
 
 ---
 
-## 🚀 Tecnologias Utilizadas
+## ✨ Main Features
 
-Este projeto foi construído com uma stack moderna, combinando a robustez do Python no backend com a reatividade do React no frontend.
+* **Dashboard (Overview):** A home screen with KPIs (Key Performance Indicators) that summarize the month's financial impact, including total spending, total card payments, and total debit payments.
+* **Interactive Charts:** Visual analysis of spending by category, with filters by payment type (debit/card) and person responsible. * **Invoice Management:** A dedicated screen to view the invoice history for each credit card, with precise calculation of the purchase period based on the closing date.
+* **Installment Control:** Full support for installment purchases, with installments correctly allocated to their respective invoices.
+* **Goal Management:** Create and track the progress of financial goals, such as travel or large purchases.
+* **Complete CRUD:** Functionality for adding, editing, and deleting expenses, categories, and cards, always maintaining the integrity of the financial history (soft delete).
+
+---
+
+## 🚀 Technologies Used
+
+This project was built with a modern stack, combining the robustness of Python on the backend with the reactivity of React on the frontend.
 
 * **Backend:**
-    * **Python 3.10+**
-    * **FastAPI:** Para a construção da API REST.
-    * **SQLAlchemy:** Como ORM para a comunicação com o banco de dados.
-    * **SQLite:** Como banco de dados de arquivo único, ideal para uma aplicação de desktop.
+* **Python 3.10+**
+* **FastAPI:** For building the REST API. * **SQLAlchemy:** As an ORM for database communication.
+* **SQLite:** As a single-file database, ideal for a desktop application.
 
 * **Frontend:**
-    * **React:** Para a construção da interface de usuário.
-    * **Vite:** Como ferramenta de build e servidor de desenvolvimento.
-    * **Material-UI (MUI):** Para a biblioteca de componentes visuais.
-    * **Recharts:** Para a criação dos gráficos.
+* **React:** For building the user interface.
+* **Vite:** As a build tool and development server.
+* **Material-UI (MUI):** For the visual component library.
+* **Recharts:** For creating charts.
 
-* **Empacotamento para Desktop:**
-    * **PyInstaller:** Para empacotar o backend, o frontend e todas as dependências em um único executável (`.exe`).
-    * **pywebview:** Para criar a janela nativa do Windows que exibe a interface React.
+* **Desktop Packaging:**
+* **PyInstaller:** To package the backend, frontend, and all dependencies into a single executable (`.exe`).
+* **pywebview:** To create the native Windows window that displays the React interface.
 
 ---
 
-## 🛠️ Como Gerar o Executável (`.exe`)
+## 🛠️ How to Generate the Executable (`.exe`)
 
-Para compilar o projeto e gerar o instalador para Windows, siga os passos abaixo.
+To compile the project and generate the Windows installer, follow the steps below.
 
-### Pré-requisitos
-* Python 3.10+ instalado e adicionado ao PATH.
-* Node.js e npm instalados.
+### Prerequisites
+* Python 3.10+ installed and added to your PATH.
+* Node.js and npm installed.
 
-### Passo a Passo
+### Step by Step
 
-1.  **Clone o repositório:**
-    ```bash
-    git clone [https://github.com/seu-usuario/seu-repositorio.git](https://github.com/seu-usuario/seu-repositorio.git)
-    cd seu-repositorio
-    ```
+1. **Clone the repository:**
+```bash
+git clone [https://github.com/your-username/your-repository.git](https://github.com/your-username/your-repository.git)
+cd your-repository
+```
 
-2.  **Crie e ative um ambiente virtual para o Python:**
-    ```bash
-    python -m venv venv
-    .\venv\Scripts\activate
-    ```
+2. **Create and activate a virtual environment for Python:**
+```bash
+python -m venv venv
+.\venv\Scripts\activate
+```
 
-3.  **Instale as dependências do backend:**
-    ```bash
-    pip install -r backend/requirements.txt
-    pip install pywebview pyinstaller 
-    ```
+3. **Install the backend dependencies:**
+```bash
+pip install -r backend/requirements.txt
+pip install pywebview pyinstaller
+```
 
-4.  **Instale as dependências e compile o frontend:**
-    ```bash
-    cd frontend
-    npm install
-    npm run build
-    cd .. 
-    ```
+4. **Install the dependencies and compile the frontend:**
+```bash
+cd frontend
+npm install
+npm run build
+cd ..
+```
 
-5.  **Gere o executável com PyInstaller:**
-    Na pasta raiz do projeto, execute o comando:
-    ```bash
-    pyinstaller --name "CalculadoraFinanceira" --onefile --add-data "frontend/dist;frontend/dist" --add-data "backend;backend" --hidden-import "uvicorn.lifespan.on" --hidden-import "uvicorn.loops.auto" --hidden-import "uvicorn.protocols.http.auto" run_desktop_app.py
-    ```
+5. **Generate the executable With PyInstaller:**
+In the project root folder, run the command:
+```bash
+pyinstaller --name "CalculadoraFinanceira" --onefile --add-data "frontend/dist;frontend/dist" --add-data "backend;backend" --hidden-import "uvicorn.lifespan.on" --hidden-import "uvicorn.loops.auto" --hidden-import "uvicorn.protocols.http.auto" run_desktop_app.py
+```
 
-6.  **Pronto!** O executável final estará na pasta `dist` que foi criada na raiz do projeto.
+6. **Done!** The final executable will be in the `dist` folder that was created in the project root.
